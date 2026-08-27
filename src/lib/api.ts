@@ -515,6 +515,10 @@ export const consultationApi = {
     },
   ) => post<ConsultationDetail>(`/consultations/${id}/triage`, input),
 
+  /** Advances Triaged → AwaitingClinician → InConsultation (backend workflow). */
+  begin: (id: string) =>
+    post<ConsultationDetail>(`/consultations/${id}/begin`),
+
   recordDiagnosis: (id: string, input: { icdCode: string; description: string; isPrimary: boolean }) =>
     post<ConsultationDetail>(`/consultations/${id}/diagnoses`, input),
 

@@ -243,9 +243,25 @@ function ConsultationDetailView({
             <Vital label="Weight" value={consultation.triage.weightKg ? `${consultation.triage.weightKg}kg` : '—'} />
           </div>
         ) : (
-          <p className="text-sm text-white/35">Not recorded.</p>
+          <TriageForm
+            onSave={(input) =>
+              void run(() => consultationApi.recordTriage(consultation.id, input))
+            }
+          />
         )}
       </div>
+
+      {/* Begin clinical phase — required before diagnosis/complete (backend workflow) */}
+      {(consultation.status === 'Triaged' || consultation.status === 'AwaitingClinician') && (
+        <button
+          className="btn-ghost w-full text-sky-400 border-sky-500/25 hover:bg-sky-500/10"
+          disabled={busy}
+          onClick={() => void run(() => consultationApi.begin(consultation.id))}
+        >
+          {busy && <Loader2 size={15} className="animate-spin" />}
+          Begin clinical phase
+        </button>
+      )}
 
       {/* Diagnoses */}
       <div className="p-3.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
@@ -337,6 +353,48 @@ function Vital({ label, value }: { label: string; value: string }) {
       <p className="text-[11px] text-white/40">{label}</p>
       <p className="font-medium text-white/85">{value}</p>
     </div>
+  )
+}
+
+function TriageForm({
+  onSave,
+}: {
+  onSave: (input: {
+    temperatureCelsius?: number | null
+    bloodPressure?: string | null
+    pulseRate?: number | null
+    respiratoryRate?: number | null
+    weightKg?: number | null
+  }) => void
+}) {
+  const [temperatureCelsius, setTemperatureCelsius] = useState('')
+  const [bloodPressure, setBloodPressure] = useState('')
+  const [pulseRate, setPulseRate] = useState('')
+  const [respiratoryRate, setRespiratoryRate] = useState('')
+  const [weightKg, setWeightKg] = useState('')
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    onSave({
+      temperatureCelsius: temperatureCelsius ? Number(temperatureCelsius) : null,
+      bloodPressure: bloodPressure.trim() || null,
+      pulseRate: pulseRate ? Number(pulseRate) : null,
+      respiratoryRate: respiratoryRate ? Number(respiratoryRate) : null,
+      weightKg: weightKg ? Number(weightKg) : null,
+    })
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-2">
+      <div className="grid grid-cols-5 gap-2">
+        <input className="input text-xs py-1.5" placeholder="Temp °C" value={temperatureCelsius} onChange={(e) => setTemperatureCelsius(e.target.value)} />
+        <input className="input text-xs py-1.5" placeholder="BP" value={bloodPressure} onChange={(e) => setBloodPressure(e.target.value)} />
+        <input className="input text-xs py-1.5" placeholder="Pulse" value={pulseRate} onChange={(e) => setPulseRate(e.target.value)} />
+        <input className="input text-xs py-1.5" placeholder="Resp" value={respiratoryRate} onChange={(e) => setRespiratoryRate(e.target.value)} />
+        <input className="input text-xs py-1.5" placeholder="Weight kg" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+      </div>
+      <button type="submit" className="btn-primary text-xs py-1.5">Save triage</button>
+    </form>
   )
 }
 
