@@ -48,12 +48,16 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
       toast.error('First name, last name, date of birth and phone are required.');
       return;
     }
+    if (form.nextOfKinName.trim() && !form.nextOfKinPhone.trim()) {
+      toast.error('Next of kin phone is required when next of kin details are entered.');
+      return;
+    }
     setSaving(true);
     try {
       const res: RegisterPatientResponse = await PatientService.register({
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
-        dateOfBirth: new Date(form.dateOfBirth).toISOString(),
+        dateOfBirth: form.dateOfBirth, // yyyy-MM-dd — matches the backend DateOnly binding
         gender: form.gender,
         maritalStatus: form.maritalStatus,
         phone: form.phone.trim(),
