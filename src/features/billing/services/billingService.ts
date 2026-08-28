@@ -3,8 +3,8 @@
 // Location: src/features/billing/services/billingService.ts
 // ============================================================
 
-import { http } from '@/lib/apiClient';
-import type { InvoiceDetail, PaymentReceiptDto, ShaClaimSubmissionDto } from '../types/billing';
+import { http, type PagedResult } from '@/lib/apiClient';
+import type { InvoiceDetail, InvoiceListItem, PaymentReceiptDto, ShaClaimSubmissionDto } from '../types/billing';
 
 export const BillingService = {
   issueInvoice(input: {
@@ -31,5 +31,11 @@ export const BillingService = {
 
   submitShaClaim(invoiceId: string, shaClaimReference: string): Promise<ShaClaimSubmissionDto> {
     return http.post<ShaClaimSubmissionDto>('/billing/sha/claims', { invoiceId, shaClaimReference });
+  },
+
+  list(pageNumber = 1, pageSize = 20, status?: string): Promise<PagedResult<InvoiceListItem>> {
+    const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
+    if (status) q.set('status', status);
+    return http.get<PagedResult<InvoiceListItem>>(`/billing/invoices?${q.toString()}`);
   },
 };

@@ -6,9 +6,12 @@ import { PatientService } from '../services/patientService';
 import type { PatientSummary } from '../types/patient';
 import { formatDate, ageFromDateOfBirth } from '@/lib/format';
 import RegisterPatientModal from '../components/RegisterPatientModal';
+import { useAuth } from '@/features/auth/components/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 export default function PatientsPage() {
   const navigate = useNavigate();
+  const { permissions } = useAuth();
   const [items, setItems] = useState<PatientSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -51,10 +54,12 @@ export default function PatientsPage() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Patients</h1>
           <p className="text-sm text-slate-500 mt-0.5">{total.toLocaleString()} records</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowRegister(true)}>
-          <UserPlus size={16} />
-          Register patient
-        </button>
+        {hasPermission(permissions, PERMISSIONS.PATIENT_REGISTER) && (
+          <button className="btn-primary" onClick={() => setShowRegister(true)}>
+            <UserPlus size={16} />
+            Register patient
+          </button>
+        )}
       </div>
 
       {/* Search */}

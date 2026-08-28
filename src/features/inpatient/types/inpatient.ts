@@ -25,3 +25,15 @@ export interface WardOccupancyDto {
   occupiedBeds: number;
   totalBeds: number;
 }
+
+export interface AdmissionListItem {
+  id: string;
+  patientId: string;
+  patientNumber: string;
+  patientName: string;
+  wardName: string;
+  bedNumber: string;
+  status: string;
+  admittedAtUtc: string;
+  dischargedAtUtc: string | null;
+}

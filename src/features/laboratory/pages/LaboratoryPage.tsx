@@ -1,59 +1,63 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, FlaskConical, TestTube2 } from 'lucide-react';
+import { Loader2, FlaskConical, TestTube2, Inbox } from 'lucide-react';
 import { LaboratoryService } from '../services/laboratoryService';
 import { ConsultationService } from '@/features/consultations/services/consultationService';
 import { PatientService } from '@/features/patients/services/patientService';
-import type { LabOrderDetail } from '../types/laboratory';
+import type { LabOrderDetail, LabOrderListItem } from '../types/laboratory';
 import type { PatientSummary } from '@/features/patients/types/patient';
 import { formatDateTime } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
-interface LabRow extends LabOrderDetail {
-  patientName?: string;
+interface LabRow extends LabOrderListItem {
+  detail?: LabOrderDetail;
 }
 
+const STATUS_STYLES: Record<string, string> = {
+  Pending: 'bg-amber-100 text-amber-700',
+  InProgress: 'bg-sky-100 text-sky-700',
+  PartiallyCompleted: 'bg-violet-100 text-violet-700',
+  Completed: 'bg-emerald-100 text-emerald-700',
+  Cancelled: 'bg-red-100 text-red-700',
+};
+
 export default function LaboratoryPage() {
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
   const [orders, setOrders] = useState<LabRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [active, setActive] = useState<LabRow | null>(null);
+  const [activeLoading, setActiveLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PatientSummary[]>([]);
   const [selected, setSelected] = useState<PatientSummary | null>(null);
+  const [consultationId, setConsultationId] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [tests, setTests] = useState([{ testCode: '', testName: '' }]);
   const [saving, setSaving] = useState(false);
 
+  const canOrder = hasPermission(permissions, PERMISSIONS.LABORATORY_ORDER);
+  const canRecordResult = hasPermission(permissions, PERMISSIONS.LABORATORY_RECORD_RESULT);
+
+  const load = async (pageNumber: number) => {
+    setLoading(true);
+    try {
+      const res = await LaboratoryService.list(pageNumber, 20);
+      setOrders(res.items);
+      setTotal(res.totalCount);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load lab orders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const res = await PatientService.search(undefined, 1, 20).catch(() => null);
-        if (!mounted) return;
-        setOrders(
-          (res?.items ?? []).slice(0, 10).map((p: PatientSummary) => ({
-            id: p.id,
-            patientId: p.id,
-            consultationId: '',
-            orderedByUserId: '',
-            status: '—',
-            orderedAtUtc: p.lastVisitDate ?? p.dateOfBirth,
-            tests: [],
-            patientName: p.fullName,
-          })),
-        );
-      } catch {
-        /* tolerate */
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    void load(page);
+  }, [page]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -68,13 +72,42 @@ export default function LaboratoryPage() {
     return () => clearTimeout(timer);
   }, [query]);
 
+  // Resolve the patient's latest active consultation for the order context.
+  useEffect(() => {
+    if (!selected) {
+      setConsultationId(null);
+      return;
+    }
+    let mounted = true;
+    setResolving(true);
+    ConsultationService.history(selected.id)
+      .then((history) => {
+        if (!mounted) return;
+        const active = history.consultations.find((c) => c.status !== 'Completed');
+        const latest = active ?? history.consultations[0] ?? null;
+        setConsultationId(latest?.id ?? null);
+      })
+      .catch(() => {
+        if (mounted) setConsultationId(null);
+      })
+      .finally(() => {
+        if (mounted) setResolving(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selected]);
+
   const open = async (o: LabRow) => {
+    setActiveLoading(true);
+    setActive(o);
     try {
       const detail = await LaboratoryService.detail(o.id);
-      setActive({ ...o, ...detail });
+      setActive({ ...o, detail });
     } catch {
-      toast.error('No lab order for this patient yet — create one.');
-      setActive(null);
+      setActive({ ...o, detail: undefined });
+    } finally {
+      setActiveLoading(false);
     }
   };
 
@@ -86,6 +119,10 @@ export default function LaboratoryPage() {
       toast.error('Select a patient first.');
       return;
     }
+    if (!consultationId) {
+      toast.error('This patient has no consultation yet — start one from Consultations first.');
+      return;
+    }
     const valid = tests.filter((t) => t.testCode.trim() && t.testName.trim());
     if (valid.length === 0) {
       toast.error('Add at least one test.');
@@ -93,18 +130,18 @@ export default function LaboratoryPage() {
     }
     setSaving(true);
     try {
-      const consultation = await ConsultationService.start(selected.id, user?.id ?? '');
       const res = await LaboratoryService.createOrder({
         patientId: selected.id,
-        consultationId: consultation.id,
+        consultationId,
         tests: valid.map((t) => ({ testCode: t.testCode.trim(), testName: t.testName.trim() })),
       });
       toast.success('Lab order created');
       setShowCreate(false);
-      setActive({ ...res, patientName: selected.fullName });
+      setActive({ ...res, patientName: selected.fullName, patientNumber: selected.patientNumber, testCount: res.tests.length, detail: res });
       setQuery('');
       setSelected(null);
       setTests([{ testCode: '', testName: '' }]);
+      void load(page);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create order');
     } finally {
@@ -113,10 +150,11 @@ export default function LaboratoryPage() {
   };
 
   const recordResult = async (testItemId: string, input: { resultValue: string; resultUnit?: string; isAbnormal?: boolean }) => {
-    if (!active) return;
+    if (!active?.detail) return;
     try {
-      const updated = await LaboratoryService.recordResult(active.id, { testItemId, ...input });
-      setActive((prev) => (prev ? { ...prev, ...updated } : prev));
+      const updated = await LaboratoryService.recordResult(active.detail.id, { testItemId, ...input });
+      setActive((prev) => (prev ? { ...prev, detail: updated } : prev));
+      void load(page);
       toast.success('Result recorded');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record result');
@@ -128,23 +166,30 @@ export default function LaboratoryPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Laboratory</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Lab orders & results</p>
+          <p className="text-sm text-slate-500 mt-0.5">{total.toLocaleString()} lab orders</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowCreate(true)}>
-          <TestTube2 size={16} />
-          New lab order
-        </button>
+        {canOrder && (
+          <button className="btn-primary" onClick={() => setShowCreate(true)}>
+            <TestTube2 size={16} />
+            New lab order
+          </button>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-900">Recent orders</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Lab orders</h2>
           </div>
           {loading ? (
             <div className="flex items-center justify-center gap-3 py-14">
               <Loader2 size={20} className="animate-spin text-indigo-600" />
               <p className="text-sm text-slate-400">Loading…</p>
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <Inbox size={28} className="text-slate-300" />
+              <p className="text-sm text-slate-400 max-w-xs">No lab orders yet.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -159,15 +204,29 @@ export default function LaboratoryPage() {
                 <tbody>
                   {orders.map((o) => (
                     <tr key={o.id} className="cursor-pointer" onClick={() => void open(o)}>
-                      <td className="font-medium text-slate-900">{o.patientName}</td>
                       <td>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{o.status}</span>
+                        <p className="font-medium text-slate-900">{o.patientName}</p>
+                        <p className="font-mono text-xs text-indigo-600">{o.patientNumber}</p>
                       </td>
-                      <td className="text-slate-500">{formatDateTime(o.orderedAtUtc)}</td>
+                      <td>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[o.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                          {o.status}
+                        </span>
+                      </td>
+                      <td className="text-slate-500 text-xs">{formatDateTime(o.orderedAtUtc)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {total > 20 && (
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 text-sm">
+              <p className="text-slate-500">Page {page} of {Math.max(1, Math.ceil(total / 20))}</p>
+              <div className="flex gap-2">
+                <button className="btn-ghost text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
+                <button className="btn-ghost text-xs" disabled={page >= Math.ceil(total / 20)} onClick={() => setPage((p) => p + 1)}>Next</button>
+              </div>
             </div>
           )}
         </div>
@@ -176,11 +235,24 @@ export default function LaboratoryPage() {
           <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
             <FlaskConical size={15} className="text-indigo-600" /> Order details
           </h2>
-          {active && active.status !== '—' ? (
+          {activeLoading ? (
+            <div className="flex items-center justify-center gap-3 py-16">
+              <Loader2 size={20} className="animate-spin text-indigo-600" />
+              <p className="text-sm text-slate-400">Loading…</p>
+            </div>
+          ) : active && active.detail ? (
             <div className="space-y-3">
-              <p className="text-xs text-slate-400">Ordered {formatDateTime(active.orderedAtUtc)} · {active.status}</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{active.patientName}</p>
+                  <p className="text-xs text-slate-400">Ordered {formatDateTime(active.detail.orderedAtUtc)}</p>
+                </div>
+                <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_STYLES[active.detail.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {active.detail.status}
+                </span>
+              </div>
               <div className="space-y-2">
-                {active.tests.map((t) => (
+                {active.detail.tests.map((t) => (
                   <div key={t.id} className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-sm">
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-slate-900">
@@ -194,8 +266,10 @@ export default function LaboratoryPage() {
                         {t.resultUnit && <span className="text-slate-400"> {t.resultUnit}</span>}
                         {t.referenceRange && <span className="text-slate-400"> (ref {t.referenceRange})</span>}
                       </div>
-                    ) : (
+                    ) : canRecordResult ? (
                       <ResultForm onSave={(input) => void recordResult(t.id, input)} />
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-400">Awaiting result.</p>
                     )}
                   </div>
                 ))}
@@ -210,7 +284,7 @@ export default function LaboratoryPage() {
         </div>
       </div>
 
-      {showCreate && (
+      {showCreate && canOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setShowCreate(false)}>
           <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 sticky top-0 bg-white rounded-t-xl">
@@ -241,6 +315,9 @@ export default function LaboratoryPage() {
                   </ul>
                 )}
                 {selected && <p className="text-xs text-emerald-600 mt-2">✓ {selected.fullName}</p>}
+                {selected && !resolving && !consultationId && (
+                  <p className="text-xs text-amber-600 mt-1">No consultation on record — start one from Consultations first.</p>
+                )}
               </div>
 
               <div className="space-y-3">
@@ -262,7 +339,7 @@ export default function LaboratoryPage() {
 
               <div className="flex justify-end gap-2 pt-2">
                 <button className="btn-ghost" onClick={() => setShowCreate(false)}>Cancel</button>
-                <button className="btn-primary" disabled={saving} onClick={() => void createOrder()}>
+                <button className="btn-primary" disabled={saving || !consultationId} onClick={() => void createOrder()}>
                   {saving && <Loader2 size={15} className="animate-spin" />}
                   Create order
                 </button>

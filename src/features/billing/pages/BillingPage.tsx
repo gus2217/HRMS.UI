@@ -1,23 +1,41 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, Receipt, CreditCard } from 'lucide-react';
+import { Loader2, Receipt, CreditCard, Inbox } from 'lucide-react';
 import { BillingService } from '../services/billingService';
 import { PatientService } from '@/features/patients/services/patientService';
-import type { InvoiceDetail, PaymentReceiptDto } from '../types/billing';
+import type { InvoiceDetail, InvoiceListItem, PaymentReceiptDto } from '../types/billing';
 import type { PatientSummary } from '@/features/patients/types/patient';
-import { formatMoney } from '@/lib/format';
+import { formatMoney, formatDateTime } from '@/lib/format';
+import { useAuth } from '@/features/auth/components/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
-interface InvoiceRow extends InvoiceDetail {
-  patientName?: string;
+interface InvoiceRow extends InvoiceListItem {
+  detail?: InvoiceDetail;
 }
 
-const PAYMENT_METHODS = ['Cash', 'Mpesa', 'Card', 'BankTransfer', 'Insurance', 'SHA'];
+const PAYMENT_METHODS = ['Cash', 'MPesa', 'ShaCover', 'BankTransfer', 'Insurance'];
+
+const STATUS_STYLES: Record<string, string> = {
+  Draft: 'bg-slate-100 text-slate-600',
+  Issued: 'bg-sky-100 text-sky-700',
+  PartiallyPaid: 'bg-amber-100 text-amber-700',
+  Paid: 'bg-emerald-100 text-emerald-700',
+  Cancelled: 'bg-red-100 text-red-700',
+  WrittenOff: 'bg-slate-200 text-slate-600',
+};
 
 export default function BillingPage() {
+  const { permissions } = useAuth();
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showIssue, setShowIssue] = useState(false);
   const [active, setActive] = useState<InvoiceRow | null>(null);
+  const [activeLoading, setActiveLoading] = useState(false);
+
+  const canIssue = hasPermission(permissions, PERMISSIONS.BILLING_ISSUE_INVOICE);
+  const canRecordPayment = hasPermission(permissions, PERMISSIONS.BILLING_RECORD_PAYMENT);
 
   // Issue-invoice modal state
   const [query, setQuery] = useState('');
@@ -27,35 +45,22 @@ export default function BillingPage() {
   const [lines, setLines] = useState([{ serviceCode: '', description: '', quantity: 1, unitPrice: 0 }]);
   const [saving, setSaving] = useState(false);
 
+  const load = async (pageNumber: number) => {
+    setLoading(true);
+    try {
+      const res = await BillingService.list(pageNumber, 20);
+      setInvoices(res.items);
+      setTotal(res.totalCount);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load invoices');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const res = await PatientService.search(undefined, 1, 20).catch(() => null);
-        if (!mounted) return;
-        setInvoices(
-          (res?.items ?? []).slice(0, 10).map((p: PatientSummary) => ({
-            id: p.id,
-            patientId: p.id,
-            consultationId: null,
-            status: '—',
-            totalAmount: 0,
-            primaryPaymentMethod: null,
-            lines: [],
-            patientName: p.fullName,
-          })),
-        );
-      } catch {
-        /* tolerate */
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    void load(page);
+  }, [page]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -71,12 +76,15 @@ export default function BillingPage() {
   }, [query]);
 
   const open = async (inv: InvoiceRow) => {
+    setActiveLoading(true);
+    setActive(inv);
     try {
       const detail = await BillingService.detail(inv.id);
-      setActive({ ...inv, ...detail });
+      setActive({ ...inv, detail });
     } catch {
-      toast.error('No invoice for this patient yet — issue one.');
-      setActive(null);
+      setActive({ ...inv, detail: undefined });
+    } finally {
+      setActiveLoading(false);
     }
   };
 
@@ -107,10 +115,17 @@ export default function BillingPage() {
       });
       toast.success('Invoice issued');
       setShowIssue(false);
-      setActive({ ...res, patientName: selected.fullName });
+      setActive({
+        ...res,
+        patientName: selected.fullName,
+        patientNumber: selected.patientNumber,
+        createdAtUtc: new Date().toISOString(),
+        detail: res,
+      });
       setQuery('');
       setSelected(null);
       setLines([{ serviceCode: '', description: '', quantity: 1, unitPrice: 0 }]);
+      void load(page);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to issue invoice');
     } finally {
@@ -123,23 +138,30 @@ export default function BillingPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Billing</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Invoices, payments & SHA claims</p>
+          <p className="text-sm text-slate-500 mt-0.5">{total.toLocaleString()} invoices</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowIssue(true)}>
-          <Receipt size={16} />
-          Issue invoice
-        </button>
+        {canIssue && (
+          <button className="btn-primary" onClick={() => setShowIssue(true)}>
+            <Receipt size={16} />
+            Issue invoice
+          </button>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-900">Recent invoices</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Invoices</h2>
           </div>
           {loading ? (
             <div className="flex items-center justify-center gap-3 py-14">
               <Loader2 size={20} className="animate-spin text-indigo-600" />
               <p className="text-sm text-slate-400">Loading…</p>
+            </div>
+          ) : invoices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <Inbox size={28} className="text-slate-300" />
+              <p className="text-sm text-slate-400 max-w-xs">No invoices yet.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -154,9 +176,14 @@ export default function BillingPage() {
                 <tbody>
                   {invoices.map((inv) => (
                     <tr key={inv.id} className="cursor-pointer" onClick={() => void open(inv)}>
-                      <td className="font-medium text-slate-900">{inv.patientName}</td>
                       <td>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{inv.status}</span>
+                        <p className="font-medium text-slate-900">{inv.patientName}</p>
+                        <p className="font-mono text-xs text-indigo-600">{inv.patientNumber}</p>
+                      </td>
+                      <td>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[inv.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                          {inv.status}
+                        </span>
                       </td>
                       <td className="text-right font-semibold text-slate-700">{formatMoney(inv.totalAmount)}</td>
                     </tr>
@@ -165,16 +192,34 @@ export default function BillingPage() {
               </table>
             </div>
           )}
+          {total > 20 && (
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 text-sm">
+              <p className="text-slate-500">Page {page} of {Math.max(1, Math.ceil(total / 20))}</p>
+              <div className="flex gap-2">
+                <button className="btn-ghost text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
+                <button className="btn-ghost text-xs" disabled={page >= Math.ceil(total / 20)} onClick={() => setPage((p) => p + 1)}>Next</button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="card p-5 min-h-[300px]">
           <h2 className="text-sm font-semibold text-slate-900 mb-4">Invoice details</h2>
-          {active && active.status !== '—' ? (
+          {activeLoading ? (
+            <div className="flex items-center justify-center gap-3 py-16">
+              <Loader2 size={20} className="animate-spin text-indigo-600" />
+              <p className="text-sm text-slate-400">Loading…</p>
+            </div>
+          ) : active && active.detail ? (
             <InvoiceDetailView
-              invoice={active}
+              invoice={active.detail}
+              patientName={active.patientName}
+              canRecordPayment={canRecordPayment}
+              canIssue={canIssue}
               onPaid={(r) => {
                 toast.success(`Payment of ${formatMoney(r.amountPaid)} recorded`);
-                setActive((prev) => (prev ? { ...prev, status: 'Paid' } : prev));
+                setActive((prev) => (prev ? { ...prev, status: 'Paid', detail: prev.detail ? { ...prev.detail, status: 'Paid' } : undefined } : prev));
+                void load(page);
               }}
             />
           ) : (
@@ -186,7 +231,7 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {showIssue && (
+      {showIssue && canIssue && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setShowIssue(false)}>
           <div className="card w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 sticky top-0 bg-white rounded-t-xl">
@@ -260,7 +305,19 @@ export default function BillingPage() {
   );
 }
 
-function InvoiceDetailView({ invoice, onPaid }: { invoice: InvoiceRow; onPaid: (r: PaymentReceiptDto) => void }) {
+function InvoiceDetailView({
+  invoice,
+  patientName,
+  canRecordPayment,
+  canIssue,
+  onPaid,
+}: {
+  invoice: InvoiceDetail;
+  patientName?: string;
+  canRecordPayment: boolean;
+  canIssue: boolean;
+  onPaid: (r: PaymentReceiptDto) => void;
+}) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('Cash');
   const [reference, setReference] = useState('');
@@ -312,6 +369,10 @@ function InvoiceDetailView({ invoice, onPaid }: { invoice: InvoiceRow; onPaid: (
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-900">{patientName}</p>
+          <p className="text-xs text-slate-400 mt-0.5">Issued {formatDateTime(invoice.createdAtUtc ?? new Date().toISOString())}</p>
+        </div>
         <span className={`text-xs px-2.5 py-1 rounded-full border ${
           invoice.status === 'Paid'
             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -340,7 +401,7 @@ function InvoiceDetailView({ invoice, onPaid }: { invoice: InvoiceRow; onPaid: (
         <p className="text-lg font-bold text-indigo-600">{formatMoney(invoice.totalAmount)}</p>
       </div>
 
-      {invoice.status !== 'Paid' && (
+      {invoice.status !== 'Paid' && canRecordPayment && (
         <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Record payment</p>
           <div className="grid grid-cols-3 gap-2">
@@ -355,9 +416,11 @@ function InvoiceDetailView({ invoice, onPaid }: { invoice: InvoiceRow; onPaid: (
               {paying && <Loader2 size={14} className="animate-spin" />}
               Record payment
             </button>
-            <button className="btn-ghost" onClick={() => setShowSha((v) => !v)}>SHA claim</button>
+            {canIssue && (
+              <button className="btn-ghost" onClick={() => setShowSha((v) => !v)}>SHA claim</button>
+            )}
           </div>
-          {showSha && (
+          {showSha && canIssue && (
             <div className="flex gap-2">
               <input className="input" placeholder="SHA claim reference" value={shaRef} onChange={(e) => setShaRef(e.target.value)} />
               <button className="btn-ghost shrink-0" disabled={shaSaving} onClick={() => void submitSha()}>

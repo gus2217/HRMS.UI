@@ -3,8 +3,8 @@
 // Location: src/features/inpatient/services/inpatientService.ts
 // ============================================================
 
-import { http } from '@/lib/apiClient';
-import type { AdmissionDetail, WardOccupancyDto } from '../types/inpatient';
+import { http, type PagedResult } from '@/lib/apiClient';
+import type { AdmissionDetail, AdmissionListItem, WardOccupancyDto } from '../types/inpatient';
 
 export const InpatientService = {
   admit(input: {
@@ -30,5 +30,10 @@ export const InpatientService = {
 
   wardOccupancy(): Promise<WardOccupancyDto[]> {
     return http.get<WardOccupancyDto[]>('/inpatient/ward-occupancy');
+  },
+
+  list(pageNumber = 1, pageSize = 20, activeOnly = true): Promise<PagedResult<AdmissionListItem>> {
+    const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize), activeOnly: String(activeOnly) });
+    return http.get<PagedResult<AdmissionListItem>>(`/inpatient/admissions?${q.toString()}`);
   },
 };

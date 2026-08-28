@@ -10,6 +10,8 @@ import type {
   StockLevelReportDto,
 } from '../types/reports';
 import { formatMoney, formatNumber, daysAgoInputValue, todayInputValue } from '@/lib/format';
+import { useAuth } from '@/features/auth/components/AuthContext';
+import { hasPermission, PERMISSIONS, type Permission } from '@/lib/permissions';
 import {
   ResponsiveContainer,
   BarChart,
@@ -26,18 +28,20 @@ import {
 
 type Tab = 'registrations' | 'revenue' | 'stock' | 'sha' | 'workload';
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'registrations', label: 'Registrations', icon: <TrendingUp size={14} /> },
-  { id: 'revenue', label: 'Revenue by service', icon: <BarChart3 size={14} /> },
-  { id: 'stock', label: 'Stock levels', icon: <Boxes size={14} /> },
-  { id: 'sha', label: 'SHA claims', icon: <FileCheck2 size={14} /> },
-  { id: 'workload', label: 'Clinician workload', icon: <UserCog size={14} /> },
+const TABS: { id: Tab; label: string; icon: React.ReactNode; permission?: Permission }[] = [
+  { id: 'registrations', label: 'Registrations', icon: <TrendingUp size={14} />, permission: PERMISSIONS.IDENTITY_USER_VIEW },
+  { id: 'revenue', label: 'Revenue by service', icon: <BarChart3 size={14} />, permission: PERMISSIONS.BILLING_VIEW },
+  { id: 'stock', label: 'Stock levels', icon: <Boxes size={14} />, permission: PERMISSIONS.INVENTORY_RECEIVE },
+  { id: 'sha', label: 'SHA claims', icon: <FileCheck2 size={14} />, permission: PERMISSIONS.BILLING_VIEW },
+  { id: 'workload', label: 'Clinician workload', icon: <UserCog size={14} />, permission: PERMISSIONS.CLINICAL_VIEW },
 ];
 
 const PIE_COLORS = ['#6366f1', '#38bdf8', '#a78bfa', '#34d399', '#f472b6', '#facc15'];
 
 export default function ReportsPage() {
-  const [tab, setTab] = useState<Tab>('registrations');
+  const { permissions } = useAuth();
+  const visibleTabs = TABS.filter((t) => !t.permission || hasPermission(permissions, t.permission));
+  const [tab, setTab] = useState<Tab>(visibleTabs[0]?.id ?? 'registrations');
   const [loading, setLoading] = useState(false);
   const [registrations, setRegistrations] = useState<DailyRegistrationsReport[]>([]);
   const [revenue, setRevenue] = useState<RevenueByServiceReport[]>([]);
@@ -82,7 +86,7 @@ export default function ReportsPage() {
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}

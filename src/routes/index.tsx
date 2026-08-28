@@ -1,7 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from '@/features/layout/components/AppLayout';
-import { PERMISSIONS } from '@/lib/permissions';
+import { PERMISSIONS, REPORT_PERMISSIONS, defaultPathFor } from '@/lib/permissions';
+import { useAuth } from '@/features/auth/components/AuthContext';
 import type { ComponentType } from 'react';
 
 export interface AppPages {
@@ -19,6 +20,19 @@ export interface AppPages {
   AuditPage: ComponentType;
 }
 
+/**
+ * Home route: the backend dashboard endpoint requires Identity.User.View,
+ * so users without it land on their first permitted module instead.
+ */
+function HomePage({ dashboard }: { dashboard: ComponentType }) {
+  const { permissions } = useAuth();
+  if (permissions.has(PERMISSIONS.IDENTITY_USER_VIEW)) {
+    const Dashboard = dashboard;
+    return <Dashboard />;
+  }
+  return <Navigate to={defaultPathFor(permissions)} replace />;
+}
+
 const AppRoutes = ({ pages }: { pages: AppPages }) => (
   <Routes>
     <Route path="/login" element={<pages.LoginPage />} />
@@ -27,7 +41,7 @@ const AppRoutes = ({ pages }: { pages: AppPages }) => (
       element={
         <ProtectedRoute>
           <AppLayout>
-            <pages.DashboardPage />
+            <HomePage dashboard={pages.DashboardPage} />
           </AppLayout>
         </ProtectedRoute>
       }
@@ -115,7 +129,7 @@ const AppRoutes = ({ pages }: { pages: AppPages }) => (
     <Route
       path="/reports"
       element={
-        <ProtectedRoute>
+        <ProtectedRoute permission={REPORT_PERMISSIONS}>
           <AppLayout>
             <pages.ReportsPage />
           </AppLayout>
@@ -125,7 +139,7 @@ const AppRoutes = ({ pages }: { pages: AppPages }) => (
     <Route
       path="/audit"
       element={
-        <ProtectedRoute>
+        <ProtectedRoute permission={PERMISSIONS.IDENTITY_USER_VIEW}>
           <AppLayout>
             <pages.AuditPage />
           </AppLayout>

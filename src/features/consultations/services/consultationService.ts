@@ -3,8 +3,8 @@
 // Location: src/features/consultations/services/consultationService.ts
 // ============================================================
 
-import { http } from '@/lib/apiClient';
-import type { ConsultationDetail, PatientClinicalHistory } from '../types/consultation';
+import { http, type PagedResult } from '@/lib/apiClient';
+import type { ConsultationDetail, ConsultationListItem, PatientClinicalHistory } from '../types/consultation';
 
 export interface TriageInput {
   temperatureCelsius?: number | null;
@@ -52,5 +52,11 @@ export const ConsultationService = {
 
   history(patientId: string): Promise<PatientClinicalHistory> {
     return http.get<PatientClinicalHistory>(`/patients/${patientId}/clinical-history`);
+  },
+
+  list(pageNumber = 1, pageSize = 20, status?: string): Promise<PagedResult<ConsultationListItem>> {
+    const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
+    if (status) q.set('status', status);
+    return http.get<PagedResult<ConsultationListItem>>(`/consultations?${q.toString()}`);
   },
 };

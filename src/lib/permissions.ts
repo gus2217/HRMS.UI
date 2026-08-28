@@ -1,12 +1,15 @@
 // ============================================================
 // Role → permission mapping, mirroring the backend seed grants
-// (Jacana.HRMS DbInitializer). The Administrator role holds every
-// permission on the backend; the UI mirrors that here. Route guards
-// and UI elements must check permissions — never roles directly.
+// (Jacana.HRMS DbInitializer) and the backend permission catalog
+// (Jacana.Identity.Application.Permissions). The Administrator role
+// holds every permission on the backend; the UI mirrors that here.
+// Route guards and UI elements must check permissions — never roles
+// directly. There is intentionally no "Dashboard.View" — the backend
+// dashboard endpoint requires Identity.User.View, so the dashboard
+// nav/route uses that permission.
 // ============================================================
 
 export const PERMISSIONS = {
-  VIEW_DASHBOARD: 'Dashboard.View',
   PATIENT_VIEW: 'Patient.View',
   PATIENT_REGISTER: 'Patient.Register',
   PATIENT_UPDATE: 'Patient.Update',
@@ -48,7 +51,6 @@ export type SystemRole =
 export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
   Administrator: Object.values(PERMISSIONS),
   Doctor: [
-    PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.PATIENT_VIEW,
     PERMISSIONS.PATIENT_REGISTER,
     PERMISSIONS.CLINICAL_VIEW,
@@ -58,14 +60,12 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.PHARMACY_DISPENSE,
   ],
   Nurse: [
-    PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.PATIENT_VIEW,
     PERMISSIONS.PATIENT_REGISTER,
     PERMISSIONS.CLINICAL_VIEW,
     PERMISSIONS.LABORATORY_ORDER,
   ],
   Receptionist: [
-    PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.PATIENT_VIEW,
     PERMISSIONS.PATIENT_REGISTER,
     PERMISSIONS.PATIENT_UPDATE,
@@ -73,23 +73,20 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.BILLING_ISSUE_INVOICE,
   ],
   LabTechnician: [
-    PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.PATIENT_VIEW,
     PERMISSIONS.LABORATORY_ORDER,
     PERMISSIONS.LABORATORY_RECORD_RESULT,
   ],
-  Pharmacist: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.PATIENT_VIEW, PERMISSIONS.PHARMACY_DISPENSE],
-  StoreKeeper: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.INVENTORY_RECEIVE, PERMISSIONS.INVENTORY_ADJUST],
+  Pharmacist: [PERMISSIONS.PATIENT_VIEW, PERMISSIONS.PHARMACY_DISPENSE],
+  StoreKeeper: [PERMISSIONS.INVENTORY_RECEIVE, PERMISSIONS.INVENTORY_ADJUST],
   Accountant: [
-    PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.BILLING_VIEW,
     PERMISSIONS.BILLING_ISSUE_INVOICE,
     PERMISSIONS.BILLING_RECORD_PAYMENT,
   ],
-  Cashier: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.BILLING_VIEW, PERMISSIONS.BILLING_RECORD_PAYMENT],
-  RecordsOfficer: [PERMISSIONS.VIEW_DASHBOARD, PERMISSIONS.PATIENT_VIEW, PERMISSIONS.PATIENT_UPDATE],
+  Cashier: [PERMISSIONS.BILLING_VIEW, PERMISSIONS.BILLING_RECORD_PAYMENT],
+  RecordsOfficer: [PERMISSIONS.PATIENT_VIEW, PERMISSIONS.PATIENT_UPDATE],
   ITSupport: [
-    PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.IDENTITY_USER_VIEW,
     PERMISSIONS.IDENTITY_USER_REGISTER,
     PERMISSIONS.IDENTITY_USER_ASSIGN_ROLE,
@@ -118,4 +115,36 @@ export function permissionsForRoles(roles: string[]): Set<Permission> {
 
 export function hasPermission(perms: Set<Permission>, permission: Permission): boolean {
   return perms.has(permission);
+}
+
+/** True when the user holds at least one of the given permissions. */
+export function hasAnyPermission(perms: Set<Permission>, required: Permission[]): boolean {
+  return required.some((p) => perms.has(p));
+}
+
+/** Permissions that unlock the Reports page (mirrors backend report endpoint grants). */
+export const REPORT_PERMISSIONS: Permission[] = [
+  PERMISSIONS.IDENTITY_USER_VIEW, // registrations + dashboard reports
+  PERMISSIONS.BILLING_VIEW, // revenue-by-service + SHA claims
+  PERMISSIONS.INVENTORY_RECEIVE, // stock levels
+  PERMISSIONS.CLINICAL_VIEW, // clinician workload
+];
+
+/** First page a user should land on, in backend-mirroring priority order. */
+export function defaultPathFor(perms: Set<Permission>): string {
+  const candidates: { path: string; permission: Permission }[] = [
+    { path: '/patients', permission: PERMISSIONS.PATIENT_VIEW },
+    { path: '/consultations', permission: PERMISSIONS.CLINICAL_VIEW },
+    { path: '/billing', permission: PERMISSIONS.BILLING_VIEW },
+    { path: '/pharmacy', permission: PERMISSIONS.PHARMACY_DISPENSE },
+    { path: '/lab', permission: PERMISSIONS.LABORATORY_ORDER },
+    { path: '/wards', permission: PERMISSIONS.CLINICAL_VIEW },
+    { path: '/inventory', permission: PERMISSIONS.INVENTORY_RECEIVE },
+  ];
+  for (const c of candidates) {
+    if (hasPermission(perms, c.permission)) return c.path;
+  }
+  if (hasAnyPermission(perms, REPORT_PERMISSIONS)) return '/reports';
+  if (hasPermission(perms, PERMISSIONS.IDENTITY_USER_VIEW)) return '/audit';
+  return '/patients';
 }

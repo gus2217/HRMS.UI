@@ -20,3 +20,14 @@ export interface PrescriptionDetail {
   prescribedAtUtc: string;
   items: PrescriptionItemDto[];
 }
+
+export interface PrescriptionListItem {
+  id: string;
+  patientId: string;
+  patientNumber: string;
+  patientName: string;
+  prescribedByUserId: string;
+  status: string;
+  prescribedAtUtc: string;
+  itemCount: number;
+}

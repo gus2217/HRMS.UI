@@ -4,6 +4,9 @@
 //
 // Works one consultation: start (when none exists), triage vitals,
 // begin clinical phase, record diagnosis, add notes, complete.
+// Every action is gated by the backend-mirroring permission:
+//   triage/begin/notes  → Clinical.Consult
+//   diagnosis/complete  → Clinical.RecordDiagnosis
 // ============================================================
 
 import { useState, type FormEvent } from 'react';
@@ -13,19 +16,23 @@ import { ConsultationService } from '../services/consultationService';
 import type { ConsultationDetail } from '../types/consultation';
 import { formatDateTime } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 interface Props {
-  consultation: ConsultationDetail;
+  consultation: ConsultationDetail | null;
+  patientName?: string;
+  patientNumber?: string;
   onChanged: (c: ConsultationDetail) => void;
 }
 
-export default function ConsultationDetailView({ consultation, onChanged }: Props) {
-  const { user } = useAuth();
+export default function ConsultationDetailView({ consultation, patientName, patientNumber, onChanged }: Props) {
+  const { user, permissions } = useAuth();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [showDiagnosis, setShowDiagnosis] = useState(false);
 
-  const isReal = consultation.status !== '—';
+  const canConsult = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
+  const canDiagnose = hasPermission(permissions, PERMISSIONS.CLINICAL_RECORD_DIAGNOSIS);
 
   const run = async (fn: () => Promise<ConsultationDetail>) => {
     setBusy(true);
@@ -40,18 +47,22 @@ export default function ConsultationDetailView({ consultation, onChanged }: Prop
     }
   };
 
-  if (!isReal) {
+  if (!consultation) {
     return (
       <div className="text-center py-10">
-        <p className="text-sm text-slate-500 mb-4">No active consultation for this patient yet.</p>
-        <button
-          className="btn-primary"
-          disabled={busy}
-          onClick={() => void run(() => ConsultationService.start(consultation.patientId, user?.id ?? ''))}
-        >
-          {busy && <Loader2 size={15} className="animate-spin" />}
-          Start consultation
-        </button>
+        <p className="text-sm text-slate-500 mb-4">
+          {patientName ? `No active consultation for ${patientName}${patientNumber ? ` (${patientNumber})` : ''} yet.` : 'No consultation selected.'}
+        </p>
+        {canConsult && (
+          <button
+            className="btn-primary"
+            disabled={busy}
+            onClick={() => void run(() => ConsultationService.start(consultation?.patientId ?? '', user?.id ?? ''))}
+          >
+            {busy && <Loader2 size={15} className="animate-spin" />}
+            Start consultation
+          </button>
+        )}
       </div>
     );
   }
@@ -81,13 +92,15 @@ export default function ConsultationDetailView({ consultation, onChanged }: Prop
             <Vital label="Resp" value={consultation.triage.respiratoryRate?.toString() ?? '—'} />
             <Vital label="Weight" value={consultation.triage.weightKg ? `${consultation.triage.weightKg}kg` : '—'} />
           </div>
-        ) : (
+        ) : canConsult ? (
           <TriageForm onSave={(input) => void run(() => ConsultationService.recordTriage(consultation.id, input))} />
+        ) : (
+          <p className="text-sm text-slate-400">Not recorded.</p>
         )}
       </div>
 
       {/* Begin clinical phase — required before diagnosis/complete (backend workflow) */}
-      {(consultation.status === 'Triaged' || consultation.status === 'AwaitingClinician') && (
+      {(consultation.status === 'Triaged' || consultation.status === 'AwaitingClinician') && canConsult && (
         <button
           className="btn-ghost w-full text-sky-600 border-sky-300 hover:bg-sky-50"
           disabled={busy}
@@ -104,9 +117,11 @@ export default function ConsultationDetailView({ consultation, onChanged }: Prop
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
             <ClipboardList size={12} /> Diagnoses
           </p>
-          <button className="text-xs font-medium text-indigo-600" onClick={() => setShowDiagnosis((v) => !v)}>
-            + Add
-          </button>
+          {canDiagnose && (
+            <button className="text-xs font-medium text-indigo-600" onClick={() => setShowDiagnosis((v) => !v)}>
+              + Add
+            </button>
+          )}
         </div>
         {consultation.diagnoses.length === 0 && !showDiagnosis ? (
           <p className="text-sm text-slate-400">None recorded.</p>
@@ -118,7 +133,7 @@ export default function ConsultationDetailView({ consultation, onChanged }: Prop
                 <span className="text-slate-600">{d.description}</span>
               </div>
             ))}
-            {showDiagnosis && (
+            {showDiagnosis && canDiagnose && (
               <DiagnosisForm
                 onCancel={() => setShowDiagnosis(false)}
                 onSave={(input) =>
@@ -146,24 +161,26 @@ export default function ConsultationDetailView({ consultation, onChanged }: Prop
             ))}
           </ul>
         )}
-        <div className="flex gap-2">
-          <input className="input" placeholder="Add a clinical note…" value={note} onChange={(e) => setNote(e.target.value)} />
-          <button
-            className="btn-primary shrink-0"
-            disabled={busy || !note.trim()}
-            onClick={() => {
-              const content = note.trim();
-              setNote('');
-              void run(() => ConsultationService.addNote(consultation.id, content));
-            }}
-          >
-            Add
-          </button>
-        </div>
+        {canConsult && (
+          <div className="flex gap-2">
+            <input className="input" placeholder="Add a clinical note…" value={note} onChange={(e) => setNote(e.target.value)} />
+            <button
+              className="btn-primary shrink-0"
+              disabled={busy || !note.trim()}
+              onClick={() => {
+                const content = note.trim();
+                setNote('');
+                void run(() => ConsultationService.addNote(consultation.id, content));
+              }}
+            >
+              Add
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Complete */}
-      {consultation.status !== 'Completed' && (
+      {consultation.status !== 'Completed' && canDiagnose && (
         <button
           className="btn-ghost w-full text-emerald-600 border-emerald-300 hover:bg-emerald-50"
           disabled={busy}

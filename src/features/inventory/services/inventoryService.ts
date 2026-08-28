@@ -3,7 +3,7 @@
 // Location: src/features/inventory/services/inventoryService.ts
 // ============================================================
 
-import { http } from '@/lib/apiClient';
+import { http, type PagedResult } from '@/lib/apiClient';
 import type { DrugCatalogDto, StockLevelDto, LowStockAlertDto } from '../types/inventory';
 
 export const InventoryService = {
@@ -36,5 +36,11 @@ export const InventoryService = {
 
   lowStock(): Promise<LowStockAlertDto[]> {
     return http.get<LowStockAlertDto[]>('/inventory/low-stock');
+  },
+
+  catalog(search?: string, pageNumber = 1, pageSize = 100): Promise<PagedResult<DrugCatalogDto>> {
+    const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
+    if (search) q.set('search', search);
+    return http.get<PagedResult<DrugCatalogDto>>(`/inventory/drugs?${q.toString()}`);
   },
 };

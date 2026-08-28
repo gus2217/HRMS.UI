@@ -3,8 +3,8 @@
 // Location: src/features/pharmacy/services/pharmacyService.ts
 // ============================================================
 
-import { http } from '@/lib/apiClient';
-import type { PrescriptionDetail } from '../types/pharmacy';
+import { http, type PagedResult } from '@/lib/apiClient';
+import type { PrescriptionDetail, PrescriptionListItem } from '../types/pharmacy';
 
 export interface PrescriptionItemInput {
   drugId: string;
@@ -33,5 +33,11 @@ export const PharmacyService = {
     quantityDispensed: number;
   }> {
     return http.post('/pharmacy/dispense', input);
+  },
+
+  list(pageNumber = 1, pageSize = 20, status?: string): Promise<PagedResult<PrescriptionListItem>> {
+    const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
+    if (status) q.set('status', status);
+    return http.get<PagedResult<PrescriptionListItem>>(`/pharmacy/prescriptions?${q.toString()}`);
   },
 };

@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import { Users, BedDouble, Banknote, FlaskConical, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
 import { DashboardService } from '../services/dashboardService';
 import { formatMoney, formatNumber } from '@/lib/format';
+import { useAuth } from '@/features/auth/components/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 interface Stat {
   label: string;
@@ -13,9 +15,12 @@ interface Stat {
 }
 
 export default function DashboardPage() {
+  const { permissions } = useAuth();
   const [stats, setStats] = useState<Stat[]>([]);
   const [lowStock, setLowStock] = useState<{ drugCode: string; drugName: string; quantityOnHand: number; reorderLevel: number }[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const canViewStock = hasPermission(permissions, PERMISSIONS.INVENTORY_RECEIVE);
 
   useEffect(() => {
     let mounted = true;
@@ -23,7 +28,7 @@ export default function DashboardPage() {
       try {
         const [summary, low] = await Promise.all([
           DashboardService.getSummary(),
-          DashboardService.getLowStock().catch(() => []),
+          canViewStock ? DashboardService.getLowStock().catch(() => []) : Promise.resolve([]),
         ]);
         if (!mounted) return;
         setStats(buildStats(summary));
@@ -38,7 +43,7 @@ export default function DashboardPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [canViewStock]);
 
   if (loading) {
     return (
@@ -72,17 +77,18 @@ export default function DashboardPage() {
         <div className="card p-5 lg:col-span-1">
           <h2 className="text-sm font-semibold text-slate-900 mb-4">Quick actions</h2>
           <div className="space-y-2">
-            <QuickLink to="/patients" label="Register / find patient" />
-            <QuickLink to="/consultations" label="Start a consultation" />
-            <QuickLink to="/pharmacy" label="Dispense prescription" />
-            <QuickLink to="/lab" label="Order lab tests" />
-            <QuickLink to="/billing" label="Issue invoice / record payment" />
-            <QuickLink to="/wards" label="Admissions & ward occupancy" />
+            {hasPermission(permissions, PERMISSIONS.PATIENT_VIEW) && <QuickLink to="/patients" label="Register / find patient" />}
+            {hasPermission(permissions, PERMISSIONS.CLINICAL_VIEW) && <QuickLink to="/consultations" label="Start a consultation" />}
+            {hasPermission(permissions, PERMISSIONS.PHARMACY_DISPENSE) && <QuickLink to="/pharmacy" label="Dispense prescription" />}
+            {hasPermission(permissions, PERMISSIONS.LABORATORY_ORDER) && <QuickLink to="/lab" label="Order lab tests" />}
+            {hasPermission(permissions, PERMISSIONS.BILLING_VIEW) && <QuickLink to="/billing" label="Issue invoice / record payment" />}
+            {hasPermission(permissions, PERMISSIONS.CLINICAL_VIEW) && <QuickLink to="/wards" label="Admissions & ward occupancy" />}
           </div>
         </div>
 
         {/* Low stock alerts */}
-        <div className="card p-5 lg:col-span-2">
+        {canViewStock && (
+          <div className="card p-5 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-900">Low stock alerts</h2>
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">
@@ -123,6 +129,7 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

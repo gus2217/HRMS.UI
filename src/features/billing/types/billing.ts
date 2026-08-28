@@ -36,3 +36,13 @@ export interface ShaClaimSubmissionDto {
   shaClaimReference: string;
   status: string;
 }
+
+export interface InvoiceListItem {
+  id: string;
+  patientId: string;
+  patientNumber: string;
+  patientName: string;
+  status: string;
+  totalAmount: number;
+  createdAtUtc: string;
+}

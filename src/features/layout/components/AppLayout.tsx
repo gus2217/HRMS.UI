@@ -5,6 +5,12 @@
 // Application shell: sidebar navigation (permission-filtered),
 // mobile header, and content area. Mirrors the Nivela admin shell
 // pattern (sidebar + header + main) with a light theme.
+//
+// RBAC: nav items carry backend-mirroring permissions. The dashboard
+// endpoint requires Identity.User.View on the backend, so the
+// Dashboard item uses that permission — not an invented "Dashboard.*".
+// Reports appears only when the user holds at least one report
+// permission. Audit is Identity.User.View only.
 // ============================================================
 
 import { useState, type ReactNode } from 'react';
@@ -26,19 +32,19 @@ import {
   Hospital,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/components/AuthContext';
-import { hasPermission, PERMISSIONS, type Permission } from '@/lib/permissions';
+import { hasAnyPermission, hasPermission, PERMISSIONS, REPORT_PERMISSIONS, type Permission } from '@/lib/permissions';
 import { initials } from '@/lib/format';
 
 interface NavItem {
   to: string;
   label: string;
   icon: ReactNode;
-  permission?: Permission;
+  permission?: Permission | Permission[];
   end?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={17} />, end: true },
+  { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={17} />, permission: PERMISSIONS.IDENTITY_USER_VIEW, end: true },
   { to: '/patients', label: 'Patients', icon: <Users size={17} />, permission: PERMISSIONS.PATIENT_VIEW },
   { to: '/consultations', label: 'Consultations', icon: <Stethoscope size={17} />, permission: PERMISSIONS.CLINICAL_VIEW },
   { to: '/pharmacy', label: 'Pharmacy', icon: <Pill size={17} />, permission: PERMISSIONS.PHARMACY_DISPENSE },
@@ -46,16 +52,23 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/billing', label: 'Billing', icon: <Receipt size={17} />, permission: PERMISSIONS.BILLING_VIEW },
   { to: '/wards', label: 'Wards', icon: <BedDouble size={17} />, permission: PERMISSIONS.CLINICAL_VIEW },
   { to: '/inventory', label: 'Inventory', icon: <Boxes size={17} />, permission: PERMISSIONS.INVENTORY_RECEIVE },
-  { to: '/reports', label: 'Reports', icon: <BarChart3 size={17} /> },
-  { to: '/audit', label: 'Audit Log', icon: <ScrollText size={17} /> },
+  { to: '/reports', label: 'Reports', icon: <BarChart3 size={17} />, permission: REPORT_PERMISSIONS },
+  { to: '/audit', label: 'Audit Log', icon: <ScrollText size={17} />, permission: PERMISSIONS.IDENTITY_USER_VIEW },
 ];
+
+function itemVisible(item: NavItem, permissions: Set<Permission>): boolean {
+  if (!item.permission) return true;
+  return Array.isArray(item.permission)
+    ? hasAnyPermission(permissions, item.permission)
+    : hasPermission(permissions, item.permission);
+}
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, permissions, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const visible = NAV_ITEMS.filter((item) => !item.permission || hasPermission(permissions, item.permission));
+  const visible = NAV_ITEMS.filter((item) => itemVisible(item, permissions));
 
   const handleLogout = async () => {
     logout();

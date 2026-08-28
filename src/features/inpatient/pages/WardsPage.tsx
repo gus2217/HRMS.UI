@@ -1,27 +1,33 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, BedDouble, DoorOpen } from 'lucide-react';
+import { Loader2, BedDouble, DoorOpen, Inbox } from 'lucide-react';
 import { InpatientService } from '../services/inpatientService';
 import { PatientService } from '@/features/patients/services/patientService';
-import type { AdmissionDetail, WardOccupancyDto } from '../types/inpatient';
+import type { AdmissionDetail, AdmissionListItem, WardOccupancyDto } from '../types/inpatient';
 import type { PatientSummary } from '@/features/patients/types/patient';
 import { formatDateTime } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
-interface AdmissionRow extends AdmissionDetail {
-  patientName?: string;
+interface AdmissionRow extends AdmissionListItem {
+  detail?: AdmissionDetail;
 }
 
 const WARDS = ['General Ward', 'Maternity', 'Pediatric', 'Surgical', 'ICU', 'Isolation'];
 
 export default function WardsPage() {
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
   const [occupancy, setOccupancy] = useState<WardOccupancyDto[]>([]);
   const [admissions, setAdmissions] = useState<AdmissionRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showAdmit, setShowAdmit] = useState(false);
   const [active, setActive] = useState<AdmissionRow | null>(null);
+  const [activeLoading, setActiveLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const canAdmit = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
 
   // Admit modal state
   const [query, setQuery] = useState('');
@@ -31,41 +37,26 @@ export default function WardsPage() {
   const [bedNumber, setBedNumber] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const load = async (pageNumber: number) => {
+    setLoading(true);
+    try {
+      const [occ, list] = await Promise.all([
+        InpatientService.wardOccupancy().catch(() => [] as WardOccupancyDto[]),
+        InpatientService.list(pageNumber, 20, true),
+      ]);
+      setOccupancy(occ);
+      setAdmissions(list.items);
+      setTotal(list.totalCount);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load admissions');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const [occ, patients] = await Promise.all([
-          InpatientService.wardOccupancy().catch(() => [] as WardOccupancyDto[]),
-          PatientService.search(undefined, 1, 20).catch(() => null),
-        ]);
-        if (!mounted) return;
-        setOccupancy(occ);
-        setAdmissions(
-          (patients?.items ?? []).slice(0, 10).map((p: PatientSummary) => ({
-            id: p.id,
-            patientId: p.id,
-            admittingClinicianUserId: '',
-            wardName: '—',
-            bedNumber: '—',
-            status: '—',
-            admittedAtUtc: p.lastVisitDate ?? p.dateOfBirth,
-            dischargedAtUtc: null,
-            notes: [],
-            patientName: p.fullName,
-          })),
-        );
-      } catch {
-        /* tolerate */
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    void load(page);
+  }, [page]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -81,22 +72,26 @@ export default function WardsPage() {
   }, [query]);
 
   const open = async (a: AdmissionRow) => {
+    setActiveLoading(true);
+    setActive(a);
     try {
       const detail = await InpatientService.detail(a.id);
-      setActive({ ...a, ...detail });
+      setActive({ ...a, detail });
     } catch {
-      toast.error('No admission for this patient yet — admit them.');
-      setActive(null);
+      setActive({ ...a, detail: undefined });
+    } finally {
+      setActiveLoading(false);
     }
   };
 
   const discharge = async () => {
-    if (!active || active.status === '—') return;
+    if (!active?.detail) return;
     setBusy(true);
     try {
-      const updated = await InpatientService.discharge(active.id);
-      setActive(updated);
+      const updated = await InpatientService.discharge(active.detail.id);
+      setActive((prev) => (prev ? { ...prev, detail: updated, status: updated.status } : prev));
       toast.success('Patient discharged');
+      void load(page);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Discharge failed');
     } finally {
@@ -105,11 +100,11 @@ export default function WardsPage() {
   };
 
   const addNote = async (content: string) => {
-    if (!active || !content.trim()) return;
+    if (!active?.detail || !content.trim()) return;
     setBusy(true);
     try {
-      const updated = await InpatientService.addNote(active.id, content.trim());
-      setActive(updated);
+      const updated = await InpatientService.addNote(active.detail.id, content.trim());
+      setActive((prev) => (prev ? { ...prev, detail: updated } : prev));
       toast.success('Ward note added');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add note');
@@ -137,10 +132,16 @@ export default function WardsPage() {
       });
       toast.success(`Admitted to ${res.wardName} · Bed ${res.bedNumber}`);
       setShowAdmit(false);
-      setActive(res);
+      setActive({
+        ...res,
+        patientName: selected.fullName,
+        patientNumber: selected.patientNumber,
+        detail: res,
+      });
       setQuery('');
       setSelected(null);
       setBedNumber('');
+      void load(page);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Admission failed');
     } finally {
@@ -155,28 +156,32 @@ export default function WardsPage() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Wards & Admissions</h1>
           <p className="text-sm text-slate-500 mt-0.5">Occupancy, admissions and discharge</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAdmit(true)}>
-          <DoorOpen size={16} />
-          Admit patient
-        </button>
+        {canAdmit && (
+          <button className="btn-primary" onClick={() => setShowAdmit(true)}>
+            <DoorOpen size={16} />
+            Admit patient
+          </button>
+        )}
       </div>
 
       {/* Occupancy */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {occupancy.map((w) => {
-          const pct = w.totalBeds > 0 ? Math.round((w.occupiedBeds / w.totalBeds) * 100) : 0;
+          const pct = w.totalBeds > 0 ? Math.round((w.occupiedBeds / w.totalBeds) * 100) : w.occupiedBeds > 0 ? 100 : 0;
           return (
             <div key={w.wardName} className="card p-4">
               <p className="text-xs font-medium text-slate-500 truncate">{w.wardName}</p>
               <p className="text-xl font-bold text-slate-900 mt-1">
-                {w.occupiedBeds}<span className="text-sm font-medium text-slate-400">/{w.totalBeds}</span>
+                {w.occupiedBeds}{w.totalBeds > 0 && <span className="text-sm font-medium text-slate-400">/{w.totalBeds}</span>}
               </p>
-              <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                  style={{ width: `${Math.min(100, pct)}%` }}
-                />
-              </div>
+              {w.totalBeds > 0 && (
+                <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                    style={{ width: `${Math.min(100, pct)}%` }}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -188,12 +193,17 @@ export default function WardsPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-900">Admissions</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Active admissions</h2>
           </div>
           {loading ? (
             <div className="flex items-center justify-center gap-3 py-14">
               <Loader2 size={20} className="animate-spin text-indigo-600" />
               <p className="text-sm text-slate-400">Loading…</p>
+            </div>
+          ) : admissions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <Inbox size={28} className="text-slate-300" />
+              <p className="text-sm text-slate-400 max-w-xs">No active admissions.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -208,15 +218,31 @@ export default function WardsPage() {
                 <tbody>
                   {admissions.map((a) => (
                     <tr key={a.id} className="cursor-pointer" onClick={() => void open(a)}>
-                      <td className="font-medium text-slate-900">{a.patientName}</td>
+                      <td>
+                        <p className="font-medium text-slate-900">{a.patientName}</p>
+                        <p className="font-mono text-xs text-indigo-600">{a.patientNumber}</p>
+                      </td>
                       <td className="text-slate-500">{a.wardName} · {a.bedNumber}</td>
                       <td>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{a.status}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          a.status === 'Discharged' ? 'bg-slate-100 text-slate-500' : 'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {a.status}
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {total > 20 && (
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 text-sm">
+              <p className="text-slate-500">Page {page} of {Math.max(1, Math.ceil(total / 20))}</p>
+              <div className="flex gap-2">
+                <button className="btn-ghost text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
+                <button className="btn-ghost text-xs" disabled={page >= Math.ceil(total / 20)} onClick={() => setPage((p) => p + 1)}>Next</button>
+              </div>
             </div>
           )}
         </div>
@@ -225,25 +251,31 @@ export default function WardsPage() {
           <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
             <BedDouble size={15} className="text-indigo-600" /> Admission details
           </h2>
-          {active && active.status !== '—' ? (
+          {activeLoading ? (
+            <div className="flex items-center justify-center gap-3 py-16">
+              <Loader2 size={20} className="animate-spin text-indigo-600" />
+              <p className="text-sm text-slate-400">Loading…</p>
+            </div>
+          ) : active && active.detail ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm">
-                  <p className="text-slate-600">
-                    Ward <span className="font-medium text-slate-900">{active.wardName}</span> · Bed{' '}
-                    <span className="font-medium text-slate-900">{active.bedNumber}</span>
+                  <p className="font-medium text-slate-900">{active.patientName}</p>
+                  <p className="text-slate-600 mt-0.5">
+                    Ward <span className="font-medium text-slate-900">{active.detail.wardName}</span> · Bed{' '}
+                    <span className="font-medium text-slate-900">{active.detail.bedNumber}</span>
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">Admitted {formatDateTime(active.admittedAtUtc)}</p>
-                  {active.dischargedAtUtc && (
-                    <p className="text-xs text-slate-400 mt-0.5">Discharged {formatDateTime(active.dischargedAtUtc)}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Admitted {formatDateTime(active.detail.admittedAtUtc)}</p>
+                  {active.detail.dischargedAtUtc && (
+                    <p className="text-xs text-slate-400 mt-0.5">Discharged {formatDateTime(active.detail.dischargedAtUtc)}</p>
                   )}
                 </div>
                 <span className="text-xs px-2.5 py-1 rounded-full border border-slate-200 bg-slate-100 text-slate-600">
-                  {active.status}
+                  {active.detail.status}
                 </span>
               </div>
 
-              {active.status !== 'Discharged' && (
+              {active.detail.status !== 'Discharged' && canAdmit && (
                 <button className="btn-ghost w-full text-red-600 border-red-200 hover:bg-red-50" disabled={busy} onClick={() => void discharge()}>
                   {busy && <Loader2 size={14} className="animate-spin" />}
                   Discharge patient
@@ -252,9 +284,9 @@ export default function WardsPage() {
 
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Ward notes</p>
-                {active.notes.length > 0 && (
+                {active.detail.notes.length > 0 && (
                   <ul className="space-y-2 mb-3">
-                    {active.notes.map((n, i) => (
+                    {active.detail.notes.map((n, i) => (
                       <li key={i} className="text-sm text-slate-600">
                         {n.content}
                         <span className="block text-[11px] text-slate-400 mt-0.5">{formatDateTime(n.recordedAtUtc)}</span>
@@ -262,7 +294,7 @@ export default function WardsPage() {
                     ))}
                   </ul>
                 )}
-                <WardNoteComposer onAdd={(content) => void addNote(content)} />
+                {canAdmit && <WardNoteComposer onAdd={(content) => void addNote(content)} />}
               </div>
             </div>
           ) : (
@@ -274,7 +306,7 @@ export default function WardsPage() {
         </div>
       </div>
 
-      {showAdmit && (
+      {showAdmit && canAdmit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setShowAdmit(false)}>
           <div className="card w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">

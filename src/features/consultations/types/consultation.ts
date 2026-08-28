@@ -47,6 +47,17 @@ export interface ConsultationSummary {
   completedAtUtc: string | null;
 }
 
+export interface ConsultationListItem {
+  id: string;
+  patientId: string;
+  patientNumber: string;
+  patientName: string;
+  clinicianUserId: string;
+  status: string;
+  startedAtUtc: string;
+  completedAtUtc: string | null;
+}
+
 export interface PatientClinicalHistory {
   patientId: string;
   consultations: ConsultationSummary[];

@@ -22,3 +22,14 @@ export interface LabOrderDetail {
   orderedAtUtc: string;
   tests: LabTestItemDto[];
 }
+
+export interface LabOrderListItem {
+  id: string;
+  patientId: string;
+  patientNumber: string;
+  patientName: string;
+  orderedByUserId: string;
+  status: string;
+  orderedAtUtc: string;
+  testCount: number;
+}

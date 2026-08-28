@@ -1,16 +1,19 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/features/auth/components/AuthContext';
-import { hasPermission, type Permission } from '@/lib/permissions';
+import { hasAnyPermission, hasPermission, type Permission } from '@/lib/permissions';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  permission?: Permission;
+  /** Single permission, or a list where ANY one grants access. */
+  permission?: Permission | Permission[];
 }
 
 /**
  * Route guard: waits for session restore, redirects to /login when
- * unauthenticated, and optionally enforces a permission.
+ * unauthenticated, and optionally enforces a permission (or any of a
+ * list). Mirrors the backend policy: the UI never grants more than the
+ * backend permission catalog allows.
  */
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission }) => {
   const { isAuthenticated, isLoading, permissions } = useAuth();
@@ -38,8 +41,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission })
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (permission && !hasPermission(permissions, permission)) {
-    return <Navigate to="/" replace />;
+  if (permission) {
+    const allowed = Array.isArray(permission)
+      ? hasAnyPermission(permissions, permission)
+      : hasPermission(permissions, permission);
+    if (!allowed) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;

@@ -3,8 +3,8 @@
 // Location: src/features/laboratory/services/laboratoryService.ts
 // ============================================================
 
-import { http } from '@/lib/apiClient';
-import type { LabOrderDetail } from '../types/laboratory';
+import { http, type PagedResult } from '@/lib/apiClient';
+import type { LabOrderDetail, LabOrderListItem } from '../types/laboratory';
 
 export const LaboratoryService = {
   createOrder(input: {
@@ -30,5 +30,11 @@ export const LaboratoryService = {
     },
   ): Promise<LabOrderDetail> {
     return http.post<LabOrderDetail>(`/lab/orders/${id}/results`, input);
+  },
+
+  list(pageNumber = 1, pageSize = 20, status?: string): Promise<PagedResult<LabOrderListItem>> {
+    const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
+    if (status) q.set('status', status);
+    return http.get<PagedResult<LabOrderListItem>>(`/lab/orders?${q.toString()}`);
   },
 };
