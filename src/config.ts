@@ -1,8 +1,22 @@
-// ============================================================
-// Runtime configuration.
-// API base is resolved from a window-level env object (injected by
-// the host at deploy time) with a same-origin `/api/v1` fallback —
-// Vite proxies /api to the backend in dev.
-// ============================================================
+// Define the shape of your config object
+interface Config {
+  API_BASE_URL: string;
+}
 
-export const API_BASE = '/api/v1'
+// Define the shape of the window environment variables (if they exist)
+interface WindowEnv {
+  API_BASE_URL?: string;
+}
+
+// Extend the Window interface to include your custom _env property
+declare global {
+  interface Window {
+    _env?: WindowEnv;
+  }
+}
+
+const config: Config = {
+  API_BASE_URL: window?._env?.API_BASE_URL || "/api/v1",
+};
+
+export default config;

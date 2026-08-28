@@ -1,11 +1,8 @@
 // ============================================================
-// Role → permission mapping.
-// Backend permission codes (from Identity.Permissions + seed):
-//   Patient.*, Clinical.*, Laboratory.*, Pharmacy.*, Inventory.*,
-//   Billing.*, Identity.*
-// The Administrator role holds every permission on the backend;
-// the UI mirrors that here. Route guards and UI elements must
-// check permissions — never roles directly.
+// Role → permission mapping, mirroring the backend seed grants
+// (Jacana.HRMS DbInitializer). The Administrator role holds every
+// permission on the backend; the UI mirrors that here. Route guards
+// and UI elements must check permissions — never roles directly.
 // ============================================================
 
 export const PERMISSIONS = {
@@ -30,11 +27,10 @@ export const PERMISSIONS = {
   IDENTITY_USER_SUSPEND: 'Identity.User.Suspend',
   IDENTITY_ROLE_VIEW: 'Identity.Role.View',
   IDENTITY_ROLE_MANAGE: 'Identity.Role.Manage',
-} as const
+} as const;
 
-export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
+export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
-/** Backend system roles (seed). */
 export type SystemRole =
   | 'Administrator'
   | 'Doctor'
@@ -46,7 +42,7 @@ export type SystemRole =
   | 'Accountant'
   | 'Cashier'
   | 'RecordsOfficer'
-  | 'ITSupport'
+  | 'ITSupport';
 
 /** Matches the backend role seed grants (DbInitializer). */
 export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
@@ -101,28 +97,25 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.IDENTITY_ROLE_VIEW,
     PERMISSIONS.IDENTITY_ROLE_MANAGE,
   ],
-}
+};
 
-const SYSTEM_ROLES = new Set(Object.keys(ROLE_PERMISSIONS))
+const SYSTEM_ROLES = new Set(Object.keys(ROLE_PERMISSIONS));
 
 export function isSystemRole(role: string): role is SystemRole {
-  return SYSTEM_ROLES.has(role)
+  return SYSTEM_ROLES.has(role);
 }
 
-/**
- * Resolve the effective permission set for a user's roles.
- * Unknown roles (e.g. future custom roles) contribute nothing but are safe.
- */
+/** Resolve the effective permission set for a user's roles. */
 export function permissionsForRoles(roles: string[]): Set<Permission> {
-  const set = new Set<Permission>()
+  const set = new Set<Permission>();
   for (const role of roles) {
     if (isSystemRole(role)) {
-      for (const p of ROLE_PERMISSIONS[role]) set.add(p)
+      for (const p of ROLE_PERMISSIONS[role]) set.add(p);
     }
   }
-  return set
+  return set;
 }
 
 export function hasPermission(perms: Set<Permission>, permission: Permission): boolean {
-  return perms.has(permission)
+  return perms.has(permission);
 }

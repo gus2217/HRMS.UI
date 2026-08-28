@@ -1,14 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
-/* ── Design tokens (Nivela-inspired dark hospital shell) ───────────── */
+/* ── Design tokens (light, hospital-console) ─────────────────────────── */
 @theme {
-  --font-sans: 'Montserrat', ui-sans-serif, system-ui, sans-serif;
-  --color-shell: #040911;        /* app background */
-  --color-panel: #0b1220;        /* cards / sidebars */
-  --color-line: rgba(255, 255, 255, 0.06);
-  --color-accent: #ffa500;       /* primary orange */
-  --color-accent-soft: rgba(255, 165, 0, 0.10);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
 }
 
 html, body, #root {
@@ -16,58 +16,45 @@ html, body, #root {
 }
 
 body {
-  background-color: #040911;
-  color: rgba(255, 255, 255, 0.9);
-  font-family: 'Montserrat', ui-sans-serif, system-ui, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbars ───────────────────────────────────────────────────── */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-}
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-}
-*::-webkit-scrollbar-track { background: transparent; }
-
-/* ── Shared helpers ───────────────────────────────────────────────── */
+/* ── Shared helpers ──────────────────────────────────────────────────── */
 .card {
-  background-color: #0b1220;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.04);
 }
 
 .input {
   width: 100%;
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.input::placeholder { color: rgba(255, 255, 255, 0.35); }
+.input::placeholder { color: #94a3b8; }
 .input:focus {
-  border-color: rgba(255, 165, 0, 0.55);
-  box-shadow: 0 0 0 3px rgba(255, 165, 0, 0.15);
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 0.15);
 }
 .input:disabled { opacity: 0.5; cursor: not-allowed; }
-
-select.input option { background-color: #0b1220; color: #fff; }
 
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background-color: #ffa500;
-  color: #040911;
+  background-color: #4f46e5;
+  color: #ffffff;
   font-weight: 600;
   font-size: 0.875rem;
   border-radius: 0.5rem;
@@ -75,7 +62,7 @@ select.input option { background-color: #0b1220; color: #fff; }
   transition: background-color 0.15s ease, transform 0.05s ease;
   cursor: pointer;
 }
-.btn-primary:hover { background-color: #ffb32e; }
+.btn-primary:hover { background-color: #4338ca; }
 .btn-primary:active { transform: scale(0.98); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -84,17 +71,17 @@ select.input option { background-color: #0b1220; color: #fff; }
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background-color: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.85);
+  background-color: #ffffff;
+  color: #334155;
   font-weight: 500;
   font-size: 0.875rem;
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid #cbd5e1;
   border-radius: 0.5rem;
   padding: 0.55rem 1rem;
   transition: background-color 0.15s ease;
   cursor: pointer;
 }
-.btn-ghost:hover { background-color: rgba(255, 255, 255, 0.10); }
+.btn-ghost:hover { background-color: #f1f5f9; }
 .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .table-base {
@@ -108,15 +95,16 @@ select.input option { background-color: #0b1220; color: #fff; }
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.4);
+  color: #64748b;
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid #e2e8f0;
   white-space: nowrap;
+  background-color: #f8fafc;
 }
 .table-base tbody td {
   padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
   vertical-align: middle;
 }
-.table-base tbody tr:hover { background-color: rgba(255, 255, 255, 0.025); }
+.table-base tbody tr:hover { background-color: #f8fafc; }
