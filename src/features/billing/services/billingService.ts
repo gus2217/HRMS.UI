@@ -33,9 +33,10 @@ export const BillingService = {
     return http.post<ShaClaimSubmissionDto>('/billing/sha/claims', { invoiceId, shaClaimReference });
   },
 
-  list(pageNumber = 1, pageSize = 20, status?: string): Promise<PagedResult<InvoiceListItem>> {
+  list(pageNumber = 1, pageSize = 20, status?: string, consultationId?: string): Promise<PagedResult<InvoiceListItem>> {
     const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
     if (status) q.set('status', status);
+    if (consultationId) q.set('consultationId', consultationId);
     return http.get<PagedResult<InvoiceListItem>>(`/billing/invoices?${q.toString()}`);
   },
 };

@@ -29,6 +29,7 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [showIssue, setShowIssue] = useState(false);
   const [active, setActive] = useState<InvoiceRow | null>(null);
@@ -45,10 +46,10 @@ export default function BillingPage() {
   const [lines, setLines] = useState([{ serviceCode: '', description: '', quantity: 1, unitPrice: 0 }]);
   const [saving, setSaving] = useState(false);
 
-  const load = async (pageNumber: number) => {
+  const load = async (pageNumber: number, statusFilter: string) => {
     setLoading(true);
     try {
-      const res = await BillingService.list(pageNumber, 20);
+      const res = await BillingService.list(pageNumber, 20, statusFilter || undefined);
       setInvoices(res.items);
       setTotal(res.totalCount);
     } catch (err) {
@@ -59,8 +60,9 @@ export default function BillingPage() {
   };
 
   useEffect(() => {
-    void load(page);
-  }, [page]);
+    void load(page, status);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, status]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -146,6 +148,14 @@ export default function BillingPage() {
             Issue invoice
           </button>
         )}
+      </div>
+
+      {/* Status filter — cashiers/receptionists focus on auto-issued bills */}
+      <div className="flex flex-wrap gap-2">
+        <StatusChip label="All" active={status === ''} onClick={() => { setStatus(''); setPage(1); }} />
+        {Object.keys(STATUS_STYLES).map((s) => (
+          <StatusChip key={s} label={s} active={status === s} onClick={() => { setStatus(s); setPage(1); }} />
+        ))}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -302,6 +312,19 @@ export default function BillingPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function StatusChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+        active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-900'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

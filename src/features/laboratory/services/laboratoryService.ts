@@ -32,9 +32,10 @@ export const LaboratoryService = {
     return http.post<LabOrderDetail>(`/lab/orders/${id}/results`, input);
   },
 
-  list(pageNumber = 1, pageSize = 20, status?: string): Promise<PagedResult<LabOrderListItem>> {
+  list(pageNumber = 1, pageSize = 20, status?: string, patientId?: string): Promise<PagedResult<LabOrderListItem>> {
     const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
     if (status) q.set('status', status);
+    if (patientId) q.set('patientId', patientId);
     return http.get<PagedResult<LabOrderListItem>>(`/lab/orders?${q.toString()}`);
   },
 };
