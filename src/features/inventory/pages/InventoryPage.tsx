@@ -81,7 +81,7 @@ export default function InventoryPage() {
         drugId: recDrugId,
         batchNumber: batchNumber.trim(),
         quantity,
-        expiryDate: new Date(expiryDate).toISOString(),
+        expiryDate, // yyyy-MM-dd — matches the backend DateOnly binding
         unitCost,
         reference: reference.trim() || null,
       });
