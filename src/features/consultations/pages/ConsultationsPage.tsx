@@ -67,6 +67,11 @@ export default function ConsultationsPage() {
     }
   };
 
+  const selectStatus = (s: string) => {
+    setStatus(s);
+    setPage(1);
+  };
+
   return (
     <div className="p-5 lg:p-8 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -84,9 +89,9 @@ export default function ConsultationsPage() {
 
       {/* Status filter */}
       <div className="flex flex-wrap gap-2">
-        <FilterChip label="All" active={status === ''} onClick={() => setStatus('')} />
+        <FilterChip label="All" active={status === ''} onClick={() => selectStatus('')} />
         {Object.keys(STATUS_STYLES).map((s) => (
-          <FilterChip key={s} label={s} active={status === s} onClick={() => setStatus(s)} />
+          <FilterChip key={s} label={s} active={status === s} onClick={() => selectStatus(s)} />
         ))}
       </div>
 
@@ -169,6 +174,7 @@ export default function ConsultationsPage() {
           ) : active ? (
             <ConsultationDetailView
               consultation={active.detail ?? null}
+              patientId={active.patientId}
               patientName={active.patientName}
               patientNumber={active.patientNumber}
               onChanged={(updated) => {

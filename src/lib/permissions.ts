@@ -63,6 +63,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.PATIENT_VIEW,
     PERMISSIONS.PATIENT_REGISTER,
     PERMISSIONS.CLINICAL_VIEW,
+    PERMISSIONS.CLINICAL_CONSULT, // triage, begin phase, clinical notes (backend grant)
     PERMISSIONS.LABORATORY_ORDER,
   ],
   Receptionist: [

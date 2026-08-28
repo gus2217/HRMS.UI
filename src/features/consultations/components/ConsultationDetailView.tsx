@@ -20,12 +20,13 @@ import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 interface Props {
   consultation: ConsultationDetail | null;
+  patientId?: string;
   patientName?: string;
   patientNumber?: string;
   onChanged: (c: ConsultationDetail) => void;
 }
 
-export default function ConsultationDetailView({ consultation, patientName, patientNumber, onChanged }: Props) {
+export default function ConsultationDetailView({ consultation, patientId, patientName, patientNumber, onChanged }: Props) {
   const { user, permissions } = useAuth();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -53,15 +54,18 @@ export default function ConsultationDetailView({ consultation, patientName, pati
         <p className="text-sm text-slate-500 mb-4">
           {patientName ? `No active consultation for ${patientName}${patientNumber ? ` (${patientNumber})` : ''} yet.` : 'No consultation selected.'}
         </p>
-        {canConsult && (
+        {canConsult && patientId && (
           <button
             className="btn-primary"
             disabled={busy}
-            onClick={() => void run(() => ConsultationService.start(consultation?.patientId ?? '', user?.id ?? ''))}
+            onClick={() => void run(() => ConsultationService.start(patientId, user?.id ?? ''))}
           >
             {busy && <Loader2 size={15} className="animate-spin" />}
             Start consultation
           </button>
+        )}
+        {canConsult && !patientId && (
+          <p className="text-xs text-slate-400">Select a patient to start a consultation.</p>
         )}
       </div>
     );
