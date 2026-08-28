@@ -52,7 +52,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/billing', label: 'Billing', icon: <Receipt size={17} />, permission: PERMISSIONS.BILLING_VIEW },
   { to: '/wards', label: 'Wards', icon: <BedDouble size={17} />, permission: PERMISSIONS.CLINICAL_VIEW },
   { to: '/inventory', label: 'Inventory', icon: <Boxes size={17} />, permission: PERMISSIONS.INVENTORY_RECEIVE },
-  { to: '/reports', label: 'Reports', icon: <BarChart3 size={17} />, permission: REPORT_PERMISSIONS },
+  { to: '/reports', label: 'Reports', icon: <BarChart3 size={17} />, permission: PERMISSIONS.IDENTITY_USER_VIEW },
   { to: '/audit', label: 'Audit Log', icon: <ScrollText size={17} />, permission: PERMISSIONS.IDENTITY_USER_VIEW },
 ];
 

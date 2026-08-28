@@ -55,7 +55,7 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       if (t === 'registrations') {
-        setRegistrations(await ReportService.registrations(new Date(from).toISOString(), new Date(to).toISOString()));
+        setRegistrations(await ReportService.registrations(from, to));
       } else if (t === 'revenue') {
         setRevenue(await ReportService.revenueByService());
       } else if (t === 'stock') {

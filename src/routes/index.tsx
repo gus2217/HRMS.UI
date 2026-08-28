@@ -129,7 +129,7 @@ const AppRoutes = ({ pages }: { pages: AppPages }) => (
     <Route
       path="/reports"
       element={
-        <ProtectedRoute permission={REPORT_PERMISSIONS}>
+        <ProtectedRoute permission={PERMISSIONS.IDENTITY_USER_VIEW}>
           <AppLayout>
             <pages.ReportsPage />
           </AppLayout>
