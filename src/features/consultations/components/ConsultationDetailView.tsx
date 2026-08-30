@@ -25,7 +25,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
 import {
   Loader2, Activity, ClipboardList, CheckCircle2, UserRound, Pill, TestTube2,
-  Receipt, Stethoscope, ShieldAlert, FileText, Users, BedDouble, Send, Save, RefreshCw,
+  Receipt, Stethoscope, ShieldAlert, FileText, Users, BedDouble, Send, Save, RefreshCw, ChevronDown,
 } from 'lucide-react';
 import { ConsultationService, type DocumentationInput, type ReferralInput } from '../services/consultationService';
 import { PharmacyService } from '@/features/pharmacy/services/pharmacyService';
@@ -431,7 +431,38 @@ function ConsultationWorkPanel({
         <DocumentationPanel consultation={consultation} onChanged={onChanged} />
       )}
 
-      {/* Diagnoses — recorded LAST, after the documentation */}
+      {/* Free-text clinical notes — before diagnosis, per record order */}
+      <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Clinical notes</p>
+        {consultation.notes.length > 0 && (
+          <ul className="space-y-2 mb-3">
+            {consultation.notes.map((n, i) => (
+              <li key={i} className="text-sm text-slate-600">
+                {n.content}
+                <span className="block text-[11px] text-slate-400 mt-0.5">{formatDateTime(n.recordedAtUtc)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {canConsult && (
+          <div className="flex gap-2">
+            <input className="input" placeholder="Add a clinical note…" value={note} onChange={(e) => setNote(e.target.value)} />
+            <button
+              className="btn-primary shrink-0"
+              disabled={busy || !note.trim()}
+              onClick={() => {
+                const content = note.trim();
+                setNote('');
+                void run(() => ConsultationService.addNote(consultation.id, content));
+              }}
+            >
+              Add
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Diagnosis — recorded LAST, after the documentation and notes */}
       <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -468,37 +499,6 @@ function ConsultationWorkPanel({
         )}
       </div>
 
-      {/* Free-text notes */}
-      <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Clinical notes</p>
-        {consultation.notes.length > 0 && (
-          <ul className="space-y-2 mb-3">
-            {consultation.notes.map((n, i) => (
-              <li key={i} className="text-sm text-slate-600">
-                {n.content}
-                <span className="block text-[11px] text-slate-400 mt-0.5">{formatDateTime(n.recordedAtUtc)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {canConsult && (
-          <div className="flex gap-2">
-            <input className="input" placeholder="Add a clinical note…" value={note} onChange={(e) => setNote(e.target.value)} />
-            <button
-              className="btn-primary shrink-0"
-              disabled={busy || !note.trim()}
-              onClick={() => {
-                const content = note.trim();
-                setNote('');
-                void run(() => ConsultationService.addNote(consultation.id, content));
-              }}
-            >
-              Add
-            </button>
-          </div>
-        )}
-      </div>
-
       {/* Complete */}
       {consultation.status !== 'Completed' && canDiagnose && (
         <button
@@ -517,7 +517,7 @@ function ConsultationWorkPanel({
 // ─── Structured medical documentation with autosave ────────────────────────────
 
 /** Form state: every section is a plain string (nulls only cross the wire). */
-type DocFormState = { [K in keyof DocumentationInput]: string };
+type DocFormState = { [K in keyof DocumentationInput]-?: string };
 
 const EMPTY_DOC: DocFormState = {
   chiefComplaint: '', historyOfPresentingIllness: '',
@@ -560,6 +560,7 @@ function DocumentationPanel({
   onChanged: (c: ConsultationDetail) => void;
 }) {
   const [form, setForm] = useState<DocFormState>(() => toForm(consultation.documentation));
+  const [open, setOpen] = useState<Record<string, boolean>>({ cc: true, hpi: true });
   const [autosave, setAutosave] = useState(() => {
     try { return localStorage.getItem('jacana.autosave') !== 'off'; } catch { return true; }
   });
@@ -597,9 +598,7 @@ function DocumentationPanel({
     }
   };
 
-  const set = (key: keyof DocFormState) => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const next = { ...form, [key]: e.target.value };
-    setForm(next);
+  const scheduleSave = (next: DocFormState) => {
     setSaveState('idle');
     if (timer.current) clearTimeout(timer.current);
     if (autosave) {
@@ -607,135 +606,233 @@ function DocumentationPanel({
     }
   };
 
+  const set = (key: keyof DocFormState) => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const next = { ...form, [key]: e.target.value };
+    setForm(next);
+    scheduleSave(next);
+  };
+
+  /** One-tap "Normal" / "NAD" fill for a ROS/exam field — the busy-doctor shortcut. */
+  const quickFill = (key: keyof DocFormState, value: string) => {
+    const next = { ...form, [key]: form[key] ? '' : value };
+    setForm(next);
+    scheduleSave(next);
+  };
+
+  const toggle = (key: string) => setOpen((o) => ({ ...o, [key]: !o[key] }));
+
   const saveNow = () => {
     if (timer.current) clearTimeout(timer.current);
     void save(form);
   };
 
+  const sectionFilled = (keys: (keyof DocFormState)[]) => keys.some((k) => form[k]?.trim());
+
+  const nav: { key: string; num: string; label: string; fields: (keyof DocFormState)[] }[] = [
+    { key: 'cc', num: '1', label: 'Chief complaint', fields: ['chiefComplaint'] },
+    { key: 'hpi', num: '2', label: 'History of presenting illness', fields: ['historyOfPresentingIllness'] },
+    { key: 'pmhx', num: '3', label: 'PMSHX', fields: ['pastMedicalHistory', 'pastSurgicalHistory', 'familyHistory', 'socialHistory', 'gynaecologicalHistory', 'obstetricHistory', 'drugHistory'] },
+    { key: 'ros', num: '4', label: 'Review of systems', fields: ['rosGeneral', 'rosCardiovascular', 'rosRespiratory', 'rosGastrointestinal', 'rosGenitourinary', 'rosMusculoskeletal', 'rosNeurological', 'rosDermatological', 'rosEntEyes', 'rosEndocrine'] },
+    { key: 'exam', num: '5', label: 'Examination', fields: ['examGeneralAppearance', 'examHeadAndNeck', 'examCardiovascular', 'examRespiratory', 'examAbdominal', 'examGenitourinary', 'examMusculoskeletal', 'examNeurological', 'examSkin', 'examLymphatic'] },
+  ];
+
   return (
-    <div className="rounded-lg bg-slate-50 border border-slate-200 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-slate-100/60 border-b border-slate-200">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-          <FileText size={12} /> Medical documentation
+    <div className="rounded-xl bg-white border border-slate-200 overflow-hidden shadow-sm">
+      {/* Sticky save bar */}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-white/95 backdrop-blur border-b border-slate-200">
+        <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+          <FileText size={13} className="text-indigo-600" />
+          Medical documentation
         </p>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autosave}
-              onChange={(e) => setAutosave(e.target.checked)}
-              className="accent-indigo-600"
-            />
+          <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+            <input type="checkbox" checked={autosave} onChange={(e) => setAutosave(e.target.checked)} className="accent-indigo-600" />
             Autosave
           </label>
           {saveState === 'saving' && (
-            <span className="flex items-center gap-1 text-xs text-slate-400">
-              <Loader2 size={12} className="animate-spin" /> Saving…
-            </span>
+            <span className="flex items-center gap-1 text-xs text-slate-400"><Loader2 size={12} className="animate-spin" /> Saving…</span>
           )}
           {saveState === 'saved' && lastSaved && (
-            <span className="flex items-center gap-1 text-xs text-emerald-600">
-              <CheckCircle2 size={12} /> Saved {formatTime(lastSaved)}
-            </span>
+            <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 size={12} /> Saved {formatTime(lastSaved)}</span>
           )}
-          {saveState === 'error' && (
-            <span className="text-xs text-red-500">Save failed</span>
-          )}
-          <button className="btn-ghost text-xs py-1" onClick={() => void saveNow()} disabled={saveState === 'saving'}>
+          {saveState === 'error' && <span className="text-xs text-red-500">Save failed</span>}
+          <button className="btn-primary text-xs py-1" onClick={() => void saveNow()} disabled={saveState === 'saving'}>
             <Save size={12} className="mr-1" />
             Save
           </button>
         </div>
       </div>
 
-      <div className="p-3.5 space-y-4">
-        {/* 1. Chief complaint */}
-        <Section label="1. Chief complaint (CC)">
-          <textarea className="input min-h-[70px]" value={form.chiefComplaint} onChange={set('chiefComplaint')} placeholder="Patient's own words — e.g. 'Fever and cough for 3 days'" />
-        </Section>
+      {/* Section jump nav (desktop) */}
+      <div className="hidden md:flex flex-wrap gap-1.5 px-4 pt-3">
+        {nav.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => {
+              setOpen((o) => ({ ...o, [s.key]: true }));
+              document.getElementById(`doc-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors ${
+              sectionFilled(s.fields)
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${sectionFilled(s.fields) ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+            {s.num}. {s.label}
+          </button>
+        ))}
+      </div>
 
-        {/* 2. History of presenting illness */}
-        <Section label="2. History of presenting illness (HPI)">
-          <textarea className="input min-h-[110px]" value={form.historyOfPresentingIllness} onChange={set('historyOfPresentingIllness')} placeholder="Onset, duration, progression, severity, aggravating/relieving factors, associated symptoms…" />
-        </Section>
+      <div className="p-4 space-y-3">
+        {/* 1. Chief complaint — always visible */}
+        <DocSection id="doc-cc" open={open.cc} onToggle={() => toggle('cc')} num="1" label="Chief complaint (CC)" filled={sectionFilled(['chiefComplaint'])}>
+          <textarea
+            className="input min-h-[64px]"
+            value={form.chiefComplaint}
+            onChange={set('chiefComplaint')}
+            placeholder="Patient's own words — e.g. 'Fever and cough for 3 days'"
+          />
+        </DocSection>
+
+        {/* 2. HPI */}
+        <DocSection id="doc-hpi" open={open.hpi} onToggle={() => toggle('hpi')} num="2" label="History of presenting illness (HPI)" filled={sectionFilled(['historyOfPresentingIllness'])}>
+          <textarea
+            className="input min-h-[100px]"
+            value={form.historyOfPresentingIllness}
+            onChange={set('historyOfPresentingIllness')}
+            placeholder="Onset, duration, progression, severity, aggravating/relieving factors, associated symptoms…"
+          />
+        </DocSection>
 
         {/* 3. PMSHX */}
-        <Section label="3. Past medical & surgical history (PMSHX)">
+        <DocSection id="doc-pmhx" open={open.pmhx} onToggle={() => toggle('pmhx')} num="3" label="Past medical & surgical history (PMSHX)" filled={sectionFilled(nav[2].fields)}>
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="Past medical history">
-              <textarea className="input min-h-[70px]" value={form.pastMedicalHistory} onChange={set('pastMedicalHistory')} placeholder="Chronic illnesses, admissions, blood transfusions…" />
-            </Field>
-            <Field label="Past surgical history">
-              <textarea className="input min-h-[70px]" value={form.pastSurgicalHistory} onChange={set('pastSurgicalHistory')} placeholder="Previous operations, dates, complications…" />
-            </Field>
-            <Field label="Family history">
-              <textarea className="input min-h-[70px]" value={form.familyHistory} onChange={set('familyHistory')} placeholder="Family illnesses: DM, HTN, TB, sickle cell, cancer…" />
-            </Field>
-            <Field label="Social history">
-              <textarea className="input min-h-[70px]" value={form.socialHistory} onChange={set('socialHistory')} placeholder="Smoking, alcohol, occupation, living conditions…" />
-            </Field>
-            <Field label="Gynaecological history">
-              <textarea className="input min-h-[70px]" value={form.gynaecologicalHistory} onChange={set('gynaecologicalHistory')} placeholder="LMP, cycles, parity, contraception…" />
-            </Field>
-            <Field label="Obstetric history">
-              <textarea className="input min-h-[70px]" value={form.obstetricHistory} onChange={set('obstetricHistory')} placeholder="Gravida/para, deliveries, complications…" />
-            </Field>
-            <Field label="Drug history">
-              <textarea className="input min-h-[70px]" value={form.drugHistory} onChange={set('drugHistory')} placeholder="Current medications, adherence, herbal remedies…" />
-            </Field>
+            <DocField label="Past medical history" value={form.pastMedicalHistory} onChange={set('pastMedicalHistory')} placeholder="Chronic illnesses, admissions, transfusions…" />
+            <DocField label="Past surgical history" value={form.pastSurgicalHistory} onChange={set('pastSurgicalHistory')} placeholder="Operations, dates, complications…" />
+            <DocField label="Family history" value={form.familyHistory} onChange={set('familyHistory')} placeholder="DM, HTN, TB, sickle cell, cancer…" />
+            <DocField label="Social history" value={form.socialHistory} onChange={set('socialHistory')} placeholder="Smoking, alcohol, occupation, living conditions…" />
+            <DocField label="Gynaecological history" value={form.gynaecologicalHistory} onChange={set('gynaecologicalHistory')} placeholder="LMP, cycles, parity, contraception…" />
+            <DocField label="Obstetric history" value={form.obstetricHistory} onChange={set('obstetricHistory')} placeholder="Gravida/para, deliveries, complications…" />
+            <DocField label="Drug history" value={form.drugHistory} onChange={set('drugHistory')} placeholder="Current meds, adherence, herbal remedies…" />
           </div>
-        </Section>
+        </DocSection>
 
-        {/* 4. Review of systems */}
-        <Section label="4. Review of systems (ROS)">
+        {/* 4. Review of systems — with Normal quick-fill */}
+        <DocSection id="doc-ros" open={open.ros} onToggle={() => toggle('ros')} num="4" label="Review of systems (ROS)" filled={sectionFilled(nav[3].fields)}>
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="General"><textarea className="input min-h-[60px]" value={form.rosGeneral} onChange={set('rosGeneral')} placeholder="Fever, weight loss, fatigue, appetite…" /></Field>
-            <Field label="Cardiovascular"><textarea className="input min-h-[60px]" value={form.rosCardiovascular} onChange={set('rosCardiovascular')} placeholder="Chest pain, palpitations, SOB, oedema…" /></Field>
-            <Field label="Respiratory"><textarea className="input min-h-[60px]" value={form.rosRespiratory} onChange={set('rosRespiratory')} placeholder="Cough, sputum, haemoptysis, wheeze…" /></Field>
-            <Field label="Gastrointestinal"><textarea className="input min-h-[60px]" value={form.rosGastrointestinal} onChange={set('rosGastrointestinal')} placeholder="Nausea, vomiting, diarrhoea, dysphagia…" /></Field>
-            <Field label="Genitourinary"><textarea className="input min-h-[60px]" value={form.rosGenitourinary} onChange={set('rosGenitourinary')} placeholder="Dysuria, frequency, discharge…" /></Field>
-            <Field label="Musculoskeletal"><textarea className="input min-h-[60px]" value={form.rosMusculoskeletal} onChange={set('rosMusculoskeletal')} placeholder="Joint pain, swelling, stiffness…" /></Field>
-            <Field label="Neurological"><textarea className="input min-h-[60px]" value={form.rosNeurological} onChange={set('rosNeurological')} placeholder="Headache, seizures, weakness, sensory loss…" /></Field>
-            <Field label="Dermatological"><textarea className="input min-h-[60px]" value={form.rosDermatological} onChange={set('rosDermatological')} placeholder="Rash, itching, skin changes…" /></Field>
-            <Field label="ENT & eyes"><textarea className="input min-h-[60px]" value={form.rosEntEyes} onChange={set('rosEntEyes')} placeholder="Hearing, vision, sore throat, ear pain…" /></Field>
-            <Field label="Endocrine"><textarea className="input min-h-[60px]" value={form.rosEndocrine} onChange={set('rosEndocrine')} placeholder="Thirst, polyuria, heat/cold intolerance…" /></Field>
+            <RosField label="General" value={form.rosGeneral} onChange={set('rosGeneral')} onQuick={() => quickFill('rosGeneral', 'Normal')} placeholder="Fever, weight loss, fatigue…" />
+            <RosField label="Cardiovascular" value={form.rosCardiovascular} onChange={set('rosCardiovascular')} onQuick={() => quickFill('rosCardiovascular', 'Normal')} placeholder="Chest pain, palpitations, SOB…" />
+            <RosField label="Respiratory" value={form.rosRespiratory} onChange={set('rosRespiratory')} onQuick={() => quickFill('rosRespiratory', 'Normal')} placeholder="Cough, sputum, haemoptysis…" />
+            <RosField label="Gastrointestinal" value={form.rosGastrointestinal} onChange={set('rosGastrointestinal')} onQuick={() => quickFill('rosGastrointestinal', 'Normal')} placeholder="Nausea, vomiting, diarrhoea…" />
+            <RosField label="Genitourinary" value={form.rosGenitourinary} onChange={set('rosGenitourinary')} onQuick={() => quickFill('rosGenitourinary', 'Normal')} placeholder="Dysuria, frequency, discharge…" />
+            <RosField label="Musculoskeletal" value={form.rosMusculoskeletal} onChange={set('rosMusculoskeletal')} onQuick={() => quickFill('rosMusculoskeletal', 'Normal')} placeholder="Joint pain, swelling, stiffness…" />
+            <RosField label="Neurological" value={form.rosNeurological} onChange={set('rosNeurological')} onQuick={() => quickFill('rosNeurological', 'Normal')} placeholder="Headache, seizures, weakness…" />
+            <RosField label="Dermatological" value={form.rosDermatological} onChange={set('rosDermatological')} onQuick={() => quickFill('rosDermatological', 'Normal')} placeholder="Rash, itching, skin changes…" />
+            <RosField label="ENT & eyes" value={form.rosEntEyes} onChange={set('rosEntEyes')} onQuick={() => quickFill('rosEntEyes', 'Normal')} placeholder="Hearing, vision, sore throat…" />
+            <RosField label="Endocrine" value={form.rosEndocrine} onChange={set('rosEndocrine')} onQuick={() => quickFill('rosEndocrine', 'Normal')} placeholder="Thirst, polyuria, intolerance…" />
           </div>
-        </Section>
+        </DocSection>
 
-        {/* 5. Examination */}
-        <Section label="5. Examination">
+        {/* 5. Examination — with NAD quick-fill */}
+        <DocSection id="doc-exam" open={open.exam} onToggle={() => toggle('exam')} num="5" label="Examination" filled={sectionFilled(nav[4].fields)}>
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="General appearance"><textarea className="input min-h-[60px]" value={form.examGeneralAppearance} onChange={set('examGeneralAppearance')} placeholder="Pallor, jaundice, cyanosis, clubbing, oedema, hydration…" /></Field>
-            <Field label="Head & neck"><textarea className="input min-h-[60px]" value={form.examHeadAndNeck} onChange={set('examHeadAndNeck')} placeholder="JVP, lymph nodes, thyroid, conjunctivae…" /></Field>
-            <Field label="Cardiovascular system"><textarea className="input min-h-[60px]" value={form.examCardiovascular} onChange={set('examCardiovascular')} placeholder="Heart sounds, murmurs, apex beat…" /></Field>
-            <Field label="Respiratory system"><textarea className="input min-h-[60px]" value={form.examRespiratory} onChange={set('examRespiratory')} placeholder="Air entry, adventitious sounds, percussion…" /></Field>
-            <Field label="Abdomen"><textarea className="input min-h-[60px]" value={form.examAbdominal} onChange={set('examAbdominal')} placeholder="Tenderness, organomegaly, ascites, bowel sounds…" /></Field>
-            <Field label="Genitourinary"><textarea className="input min-h-[60px]" value={form.examGenitourinary} onChange={set('examGenitourinary')} placeholder="External genitalia, PR/PV findings…" /></Field>
-            <Field label="Musculoskeletal"><textarea className="input min-h-[60px]" value={form.examMusculoskeletal} onChange={set('examMusculoskeletal')} placeholder="Deformities, swelling, range of movement…" /></Field>
-            <Field label="Neurological"><textarea className="input min-h-[60px]" value={form.examNeurological} onChange={set('examNeurological')} placeholder="GCS, pupils, power, tone, reflexes, sensation…" /></Field>
-            <Field label="Skin"><textarea className="input min-h-[60px]" value={form.examSkin} onChange={set('examSkin')} placeholder="Lesions, rashes, ulcers…" /></Field>
-            <Field label="Lymphatic system"><textarea className="input min-h-[60px]" value={form.examLymphatic} onChange={set('examLymphatic')} placeholder="Lymphadenopathy — site, size, consistency…" /></Field>
+            <RosField label="General appearance" value={form.examGeneralAppearance} onChange={set('examGeneralAppearance')} onQuick={() => quickFill('examGeneralAppearance', 'NAD')} placeholder="Pallor, jaundice, cyanosis, oedema…" quickLabel="NAD" />
+            <RosField label="Head & neck" value={form.examHeadAndNeck} onChange={set('examHeadAndNeck')} onQuick={() => quickFill('examHeadAndNeck', 'NAD')} placeholder="JVP, lymph nodes, thyroid…" quickLabel="NAD" />
+            <RosField label="Cardiovascular system" value={form.examCardiovascular} onChange={set('examCardiovascular')} onQuick={() => quickFill('examCardiovascular', 'NAD')} placeholder="Heart sounds, murmurs, apex…" quickLabel="NAD" />
+            <RosField label="Respiratory system" value={form.examRespiratory} onChange={set('examRespiratory')} onQuick={() => quickFill('examRespiratory', 'NAD')} placeholder="Air entry, adventitious sounds…" quickLabel="NAD" />
+            <RosField label="Abdomen" value={form.examAbdominal} onChange={set('examAbdominal')} onQuick={() => quickFill('examAbdominal', 'NAD')} placeholder="Tenderness, organomegaly, ascites…" quickLabel="NAD" />
+            <RosField label="Genitourinary" value={form.examGenitourinary} onChange={set('examGenitourinary')} onQuick={() => quickFill('examGenitourinary', 'NAD')} placeholder="External genitalia, PR/PV…" quickLabel="NAD" />
+            <RosField label="Musculoskeletal" value={form.examMusculoskeletal} onChange={set('examMusculoskeletal')} onQuick={() => quickFill('examMusculoskeletal', 'NAD')} placeholder="Deformities, range of movement…" quickLabel="NAD" />
+            <RosField label="Neurological" value={form.examNeurological} onChange={set('examNeurological')} onQuick={() => quickFill('examNeurological', 'NAD')} placeholder="GCS, pupils, power, tone, reflexes…" quickLabel="NAD" />
+            <RosField label="Skin" value={form.examSkin} onChange={set('examSkin')} onQuick={() => quickFill('examSkin', 'NAD')} placeholder="Lesions, rashes, ulcers…" quickLabel="NAD" />
+            <RosField label="Lymphatic system" value={form.examLymphatic} onChange={set('examLymphatic')} onQuick={() => quickFill('examLymphatic', 'NAD')} placeholder="Lymphadenopathy — site, size…" quickLabel="NAD" />
           </div>
-        </Section>
+        </DocSection>
       </div>
     </div>
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+/** Collapsible numbered section with a completion dot. */
+function DocSection({
+  id, open, onToggle, num, label, filled, children,
+}: {
+  id: string;
+  open: boolean;
+  onToggle: () => void;
+  num: string;
+  label: string;
+  filled: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="p-3 rounded-lg bg-white border border-slate-200">
-      <p className="text-xs font-semibold text-slate-600 mb-2">{label}</p>
-      {children}
+    <div id={id} className="rounded-lg border border-slate-200 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] flex items-center justify-center shrink-0">{num}</span>
+          {label}
+        </span>
+        <span className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${filled ? 'bg-emerald-500' : 'bg-slate-300'}`} title={filled ? 'Completed' : 'Incomplete'} />
+          <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+      {open && <div className="p-3.5 bg-white">{children}</div>}
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** Plain labelled textarea. */
+function DocField({
+  label, value, onChange, placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+}) {
   return (
     <label className="block">
       <span className="block text-xs font-medium text-slate-500 mb-1">{label}</span>
-      {children}
+      <textarea className="input min-h-[60px]" value={value} onChange={onChange} placeholder={placeholder} />
+    </label>
+  );
+}
+
+/** Textarea with a one-tap quick-fill chip (Normal / NAD) — busy-doctor shortcut. */
+function RosField({
+  label, value, onChange, onQuick, placeholder, quickLabel = 'Normal',
+}: {
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onQuick: () => void;
+  placeholder?: string;
+  quickLabel?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium text-slate-500">{label}</span>
+        <button
+          type="button"
+          onClick={onQuick}
+          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full transition-colors ${
+            value.trim() === quickLabel
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'bg-slate-100 text-slate-400 hover:bg-indigo-100 hover:text-indigo-600'
+          }`}
+          title={value.trim() ? `Clear (back to empty)` : `Mark ${quickLabel}`}
+        >
+          {value.trim() ? '✕' : quickLabel}
+        </button>
+      </span>
+      <textarea className="input min-h-[56px]" value={value} onChange={onChange} placeholder={placeholder} />
     </label>
   );
 }
