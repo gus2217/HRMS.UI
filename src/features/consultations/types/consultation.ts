@@ -112,3 +112,21 @@ export interface PatientClinicalHistory {
   diagnoses: DiagnosisDto[];
   notes: ClinicalNoteDto[];
 }
+
+/** Full per-visit medical record for clinicians (Clinical.View). */
+export interface ConsultationRecord {
+  id: string;
+  status: string;
+  startedAtUtc: string;
+  completedAtUtc: string | null;
+  triage: TriageDataDto | null;
+  diagnoses: DiagnosisDto[];
+  notes: ClinicalNoteDto[];
+  documentation: ClinicalDocumentationDto | null;
+  referrals: ReferralDto[];
+}
+
+export interface PatientMedicalRecord {
+  patientId: string;
+  consultations: ConsultationRecord[];
+}

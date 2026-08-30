@@ -4,7 +4,7 @@
 // ============================================================
 
 import { http, type PagedResult } from '@/lib/apiClient';
-import type { ConsultationDetail, ConsultationListItem, PatientClinicalHistory } from '../types/consultation';
+import type { ConsultationDetail, ConsultationListItem, PatientClinicalHistory, PatientMedicalRecord } from '../types/consultation';
 
 export interface TriageInput {
   temperatureCelsius?: number | null;
@@ -102,6 +102,11 @@ export const ConsultationService = {
 
   history(patientId: string): Promise<PatientClinicalHistory> {
     return http.get<PatientClinicalHistory>(`/patients/${patientId}/clinical-history`);
+  },
+
+  /** Full per-visit medical record — Clinical.View only. */
+  medicalRecord(patientId: string): Promise<PatientMedicalRecord> {
+    return http.get<PatientMedicalRecord>(`/patients/${patientId}/medical-record`);
   },
 
   list(pageNumber = 1, pageSize = 20, status?: string): Promise<PagedResult<ConsultationListItem>> {
