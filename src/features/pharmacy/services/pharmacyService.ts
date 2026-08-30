@@ -27,6 +27,11 @@ export const PharmacyService = {
     return http.get<PrescriptionDetail>(`/pharmacy/prescriptions/${id}`);
   },
 
+  /** All prescriptions for a consultation, with items + dispense status. */
+  byConsultation(consultationId: string): Promise<PrescriptionDetail[]> {
+    return http.get<PrescriptionDetail[]>(`/pharmacy/consultations/${consultationId}/prescriptions`);
+  },
+
   dispense(input: { prescriptionId: string; prescriptionItemId: string; quantity: number }): Promise<{
     dispenseRecordId: string;
     prescriptionItemId: string;

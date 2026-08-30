@@ -39,6 +39,8 @@ import type { PatientDetail } from '@/features/patients/types/patient';
 import type { DrugCatalogDto } from '@/features/inventory/types/inventory';
 import type { InvoiceListItem } from '@/features/billing/types/billing';
 import type { AdmissionDetail } from '@/features/inpatient/types/inpatient';
+import type { LabOrderDetail } from '@/features/laboratory/types/laboratory';
+import type { PrescriptionDetail } from '@/features/pharmacy/types/pharmacy';
 import { formatDate, formatDateTime, formatMoney, ageFromDateOfBirth } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
@@ -1155,6 +1157,25 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
   const [drugs, setDrugs] = useState<DrugCatalogDto[]>([]);
   const [lines, setLines] = useState([{ drugId: '', dosageInstructions: '', quantityPrescribed: 1 }]);
   const [saving, setSaving] = useState(false);
+  const [prescriptions, setPrescriptions] = useState<PrescriptionDetail[]>([]);
+  const [loadingRx, setLoadingRx] = useState(false);
+
+  const loadPrescriptions = async () => {
+    if (!consultation) return;
+    setLoadingRx(true);
+    try {
+      setPrescriptions(await PharmacyService.byConsultation(consultation.id));
+    } catch {
+      setPrescriptions([]);
+    } finally {
+      setLoadingRx(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadPrescriptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consultation?.id]);
 
   useEffect(() => {
     InventoryService.catalog()
@@ -1188,6 +1209,7 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
       });
       toast.success('Prescription created — added to the bill');
       setLines([{ drugId: '', dosageInstructions: '', quantityPrescribed: 1 }]);
+      await loadPrescriptions();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create prescription');
     } finally {
@@ -1213,6 +1235,50 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
         </div>
         <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Auto-billed</span>
       </div>
+
+      {/* Prescription history — kept in track, incl. dispense status */}
+      {loadingRx ? (
+        <div className="flex items-center justify-center gap-2 py-8">
+          <Loader2 size={16} className="animate-spin text-indigo-600" />
+          <p className="text-sm text-slate-400">Loading prescriptions…</p>
+        </div>
+      ) : prescriptions.length > 0 ? (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Prescriptions ({prescriptions.length})
+          </p>
+          {prescriptions.map((rx) => (
+            <div key={rx.id} className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-slate-400">{formatDateTime(rx.prescribedAtUtc)}</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  rx.status === 'FullyDispensed'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : rx.status === 'PartiallyDispensed'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {rx.status}
+                </span>
+              </div>
+              <ul className="space-y-1.5">
+                {rx.items.map((item) => (
+                  <li key={item.id} className="flex items-start justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="text-slate-700">{drugLabel(item.drugId, drugs)}</p>
+                      <p className="text-xs text-slate-400">{item.dosageInstructions}</p>
+                    </div>
+                    <span className="text-xs shrink-0">
+                      <span className="font-medium text-slate-600">{item.quantityDispensed}/{item.quantityPrescribed}</span>
+                      <span className="text-slate-400"> dispensed</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="space-y-3">
         {lines.map((line, index) => (
@@ -1257,11 +1323,35 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
   );
 }
 
+/** Best-effort drug name lookup for prescription history display. */
+function drugLabel(drugId: string, drugs: DrugCatalogDto[]): string {
+  return drugs.find((d) => d.id === drugId)?.name ?? drugId.slice(0, 8);
+}
+
 // ─── Order tests (auto-billed) ──────────────────────────────────────────────────
 
 function OrderTestsPanel({ consultation, patientId, patientName }: { consultation: ConsultationDetail | null; patientId?: string; patientName?: string }) {
   const [tests, setTests] = useState([{ testCode: '', testName: '' }]);
   const [saving, setSaving] = useState(false);
+  const [orders, setOrders] = useState<LabOrderDetail[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const loadOrders = async () => {
+    if (!consultation) return;
+    setLoadingOrders(true);
+    try {
+      setOrders(await LaboratoryService.byConsultation(consultation.id));
+    } catch {
+      setOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consultation?.id]);
 
   const setTest = (index: number, patch: Partial<(typeof tests)[number]>) =>
     setTests((ts) => ts.map((t, i) => (i === index ? { ...t, ...patch } : t)));
@@ -1285,6 +1375,7 @@ function OrderTestsPanel({ consultation, patientId, patientName }: { consultatio
       });
       toast.success('Lab order created — added to the bill');
       setTests([{ testCode: '', testName: '' }]);
+      await loadOrders();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create lab order');
     } finally {
@@ -1310,6 +1401,65 @@ function OrderTestsPanel({ consultation, patientId, patientName }: { consultatio
         </div>
         <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Auto-billed</span>
       </div>
+
+      {/* Lab orders + results — kept in track for the doctor */}
+      {loadingOrders ? (
+        <div className="flex items-center justify-center gap-2 py-8">
+          <Loader2 size={16} className="animate-spin text-indigo-600" />
+          <p className="text-sm text-slate-400">Loading lab orders…</p>
+        </div>
+      ) : orders.length > 0 ? (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Lab orders ({orders.length})
+          </p>
+          {orders.map((order) => (
+            <div key={order.id} className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-slate-400">{formatDateTime(order.orderedAtUtc)}</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  order.status === 'Completed'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : order.status === 'Pending'
+                      ? 'bg-slate-100 text-slate-600'
+                      : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {order.status}
+                </span>
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {order.tests.map((t) => (
+                    <tr key={t.id} className="border-t border-slate-200 first:border-t-0">
+                      <td className="py-1.5 pr-2">
+                        <p className="font-medium text-slate-700">{t.testName}</p>
+                        <p className="text-[11px] text-slate-400">{t.testCode} · {t.status}</p>
+                      </td>
+                      <td className="py-1.5 text-right whitespace-nowrap">
+                        {t.status === 'Resulted' ? (
+                          <span className="flex items-center justify-end gap-2">
+                            <span className={`font-mono text-xs ${t.isAbnormal ? 'text-red-600 font-semibold' : 'text-slate-700'}`}>
+                              {t.resultValue}{t.resultUnit ? ` ${t.resultUnit}` : ''}
+                            </span>
+                            {t.referenceRange && (
+                              <span className="text-[11px] text-slate-400">ref {t.referenceRange}</span>
+                            )}
+                            {t.isAbnormal && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">ABNORMAL</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="space-y-3">
         {tests.map((t, i) => (

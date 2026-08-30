@@ -19,6 +19,11 @@ export const LaboratoryService = {
     return http.get<LabOrderDetail>(`/lab/orders/${id}`);
   },
 
+  /** All lab orders for a consultation, with tests + results. */
+  byConsultation(consultationId: string): Promise<LabOrderDetail[]> {
+    return http.get<LabOrderDetail[]>(`/lab/consultations/${consultationId}/orders`);
+  },
+
   recordResult(
     id: string,
     input: {
