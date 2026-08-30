@@ -32,8 +32,9 @@ export const InpatientService = {
     return http.get<WardOccupancyDto[]>('/inpatient/ward-occupancy');
   },
 
-  list(pageNumber = 1, pageSize = 20, activeOnly = true): Promise<PagedResult<AdmissionListItem>> {
+  list(pageNumber = 1, pageSize = 20, activeOnly = true, patientId?: string): Promise<PagedResult<AdmissionListItem>> {
     const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize), activeOnly: String(activeOnly) });
+    if (patientId) q.set('patientId', patientId);
     return http.get<PagedResult<AdmissionListItem>>(`/inpatient/admissions?${q.toString()}`);
   },
 };

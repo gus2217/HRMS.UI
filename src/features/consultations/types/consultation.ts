@@ -26,6 +26,52 @@ export interface ClinicalNoteDto {
   recordedAtUtc: string;
 }
 
+/** Structured medical documentation (CC → HPI → PMSHX → ROS → Exam). */
+export interface ClinicalDocumentationDto {
+  chiefComplaint: string | null;
+  historyOfPresentingIllness: string | null;
+  pastMedicalHistory: string | null;
+  pastSurgicalHistory: string | null;
+  familyHistory: string | null;
+  socialHistory: string | null;
+  gynaecologicalHistory: string | null;
+  obstetricHistory: string | null;
+  drugHistory: string | null;
+  rosGeneral: string | null;
+  rosCardiovascular: string | null;
+  rosRespiratory: string | null;
+  rosGastrointestinal: string | null;
+  rosGenitourinary: string | null;
+  rosMusculoskeletal: string | null;
+  rosNeurological: string | null;
+  rosDermatological: string | null;
+  rosEntEyes: string | null;
+  rosEndocrine: string | null;
+  examGeneralAppearance: string | null;
+  examHeadAndNeck: string | null;
+  examCardiovascular: string | null;
+  examRespiratory: string | null;
+  examAbdominal: string | null;
+  examGenitourinary: string | null;
+  examMusculoskeletal: string | null;
+  examNeurological: string | null;
+  examSkin: string | null;
+  examLymphatic: string | null;
+  lastSavedAtUtc: string | null;
+  lastSavedByUserId: string | null;
+}
+
+export interface ReferralDto {
+  id: string;
+  referredToFacility: string;
+  referredToUnit: string | null;
+  reason: string;
+  priority: string;
+  status: string;
+  notes: string | null;
+  referredAtUtc: string;
+}
+
 export interface ConsultationDetail {
   id: string;
   patientId: string;
@@ -36,6 +82,8 @@ export interface ConsultationDetail {
   triage: TriageDataDto | null;
   diagnoses: DiagnosisDto[];
   notes: ClinicalNoteDto[];
+  documentation: ClinicalDocumentationDto | null;
+  referrals: ReferralDto[];
 }
 
 export interface ConsultationSummary {

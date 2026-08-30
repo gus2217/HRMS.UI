@@ -20,6 +20,47 @@ export interface DiagnosisInput {
   isPrimary: boolean;
 }
 
+/** All sections of the structured clinical document (every field optional). */
+export interface DocumentationInput {
+  chiefComplaint?: string | null;
+  historyOfPresentingIllness?: string | null;
+  pastMedicalHistory?: string | null;
+  pastSurgicalHistory?: string | null;
+  familyHistory?: string | null;
+  socialHistory?: string | null;
+  gynaecologicalHistory?: string | null;
+  obstetricHistory?: string | null;
+  drugHistory?: string | null;
+  rosGeneral?: string | null;
+  rosCardiovascular?: string | null;
+  rosRespiratory?: string | null;
+  rosGastrointestinal?: string | null;
+  rosGenitourinary?: string | null;
+  rosMusculoskeletal?: string | null;
+  rosNeurological?: string | null;
+  rosDermatological?: string | null;
+  rosEntEyes?: string | null;
+  rosEndocrine?: string | null;
+  examGeneralAppearance?: string | null;
+  examHeadAndNeck?: string | null;
+  examCardiovascular?: string | null;
+  examRespiratory?: string | null;
+  examAbdominal?: string | null;
+  examGenitourinary?: string | null;
+  examMusculoskeletal?: string | null;
+  examNeurological?: string | null;
+  examSkin?: string | null;
+  examLymphatic?: string | null;
+}
+
+export interface ReferralInput {
+  referredToFacility: string;
+  referredToUnit?: string | null;
+  reason: string;
+  priority: 'Routine' | 'Urgent' | 'Emergency';
+  notes?: string | null;
+}
+
 export const ConsultationService = {
   start(patientId: string, clinicianUserId: string): Promise<ConsultationDetail> {
     return http.post<ConsultationDetail>('/consultations', { patientId, clinicianUserId });
@@ -44,6 +85,15 @@ export const ConsultationService = {
 
   addNote(id: string, content: string): Promise<ConsultationDetail> {
     return http.post<ConsultationDetail>(`/consultations/${id}/notes`, { content });
+  },
+
+  /** Idempotent upsert of the structured clinical document — powers autosave. */
+  saveDocumentation(id: string, input: DocumentationInput): Promise<ConsultationDetail> {
+    return http.put<ConsultationDetail>(`/consultations/${id}/documentation`, input);
+  },
+
+  createReferral(id: string, input: ReferralInput): Promise<ConsultationDetail> {
+    return http.post<ConsultationDetail>(`/consultations/${id}/referrals`, input);
   },
 
   complete(id: string): Promise<ConsultationDetail> {

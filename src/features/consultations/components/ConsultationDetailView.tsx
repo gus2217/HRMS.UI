@@ -5,39 +5,45 @@
 // Full consultation workspace:
 //   • Record   — patient demographics, allergies, consents, next of kin,
 //                clinical history (past consultations + diagnoses)
-//   • Consult  — triage, begin phase, diagnoses, notes, complete
+//   • Consult  — structured medical documentation (CC → HPI → PMSHX → ROS →
+//                Examination → Diagnosis LAST) with autosave, triage, notes,
+//                complete
 //   • Prescribe— doctor prescribes meds (auto-billed from the drug catalog)
 //   • Tests    — doctor orders lab tests (auto-billed at the default test fee)
 //   • Bill     — the invoice auto-issued for this consultation
+//   • Admit    — inpatient admission (ward/bed) + ward notes + discharge
+//   • Referral — refer the patient to another unit/facility
 //
 // Every action is gated by the backend-mirroring permission:
-//   triage/begin/notes → Clinical.Consult
+//   triage/begin/notes/documentation/referral → Clinical.Consult
 //   diagnosis/complete → Clinical.RecordDiagnosis
 //   prescribe          → Clinical.RecordDiagnosis
 //   order tests        → Laboratory.Order
 // ============================================================
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
 import {
   Loader2, Activity, ClipboardList, CheckCircle2, UserRound, Pill, TestTube2,
-  Receipt, Stethoscope, ShieldAlert, FileText, Users,
+  Receipt, Stethoscope, ShieldAlert, FileText, Users, BedDouble, Send, Save, RefreshCw,
 } from 'lucide-react';
-import { ConsultationService } from '../services/consultationService';
+import { ConsultationService, type DocumentationInput, type ReferralInput } from '../services/consultationService';
 import { PharmacyService } from '@/features/pharmacy/services/pharmacyService';
 import { LaboratoryService } from '@/features/laboratory/services/laboratoryService';
 import { PatientService } from '@/features/patients/services/patientService';
 import { InventoryService } from '@/features/inventory/services/inventoryService';
 import { BillingService } from '@/features/billing/services/billingService';
-import type { ConsultationDetail } from '../types/consultation';
+import { InpatientService } from '@/features/inpatient/services/inpatientService';
+import type { ConsultationDetail, ClinicalDocumentationDto } from '../types/consultation';
 import type { PatientDetail } from '@/features/patients/types/patient';
 import type { DrugCatalogDto } from '@/features/inventory/types/inventory';
 import type { InvoiceListItem } from '@/features/billing/types/billing';
+import type { AdmissionDetail } from '@/features/inpatient/types/inpatient';
 import { formatDate, formatDateTime, formatMoney, ageFromDateOfBirth } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
-type Tab = 'record' | 'consult' | 'prescribe' | 'tests' | 'bill';
+type Tab = 'record' | 'consult' | 'prescribe' | 'tests' | 'bill' | 'admit' | 'referral';
 
 interface Props {
   consultation: ConsultationDetail | null;
@@ -61,6 +67,8 @@ export default function ConsultationDetailView({ consultation, patientId, patien
     { id: 'prescribe', label: 'Prescribe', icon: <Pill size={14} />, visible: canDiagnose },
     { id: 'tests', label: 'Tests', icon: <TestTube2 size={14} />, visible: canOrderTests },
     { id: 'bill', label: 'Bill', icon: <Receipt size={14} />, visible: true },
+    { id: 'admit', label: 'Admit', icon: <BedDouble size={14} />, visible: canConsult },
+    { id: 'referral', label: 'Referral', icon: <Send size={14} />, visible: canConsult },
   ];
 
   return (
@@ -107,6 +115,14 @@ export default function ConsultationDetailView({ consultation, patientId, patien
 
       {tab === 'bill' && (
         <BillPanel consultationId={consultation?.id} patientName={patientName} />
+      )}
+
+      {tab === 'admit' && (
+        <AdmitPanel consultation={consultation} patientId={patientId} patientName={patientName} canConsult={canConsult} />
+      )}
+
+      {tab === 'referral' && (
+        <ReferralPanel consultation={consultation} patientName={patientName} canConsult={canConsult} onChanged={onChanged} />
       )}
     </div>
   );
@@ -410,11 +426,16 @@ function ConsultationWorkPanel({
         </button>
       )}
 
-      {/* Diagnoses */}
+      {/* Structured medical documentation — autosaved */}
+      {canConsult && (
+        <DocumentationPanel consultation={consultation} onChanged={onChanged} />
+      )}
+
+      {/* Diagnoses — recorded LAST, after the documentation */}
       <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-            <ClipboardList size={12} /> Diagnoses
+            <ClipboardList size={12} /> Diagnosis
           </p>
           {canDiagnose && (
             <button className="text-xs font-medium text-indigo-600" onClick={() => setShowDiagnosis((v) => !v)}>
@@ -447,7 +468,7 @@ function ConsultationWorkPanel({
         )}
       </div>
 
-      {/* Notes */}
+      {/* Free-text notes */}
       <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Clinical notes</p>
         {consultation.notes.length > 0 && (
@@ -488,6 +509,544 @@ function ConsultationWorkPanel({
           <CheckCircle2 size={15} />
           Complete consultation
         </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Structured medical documentation with autosave ────────────────────────────
+
+/** Form state: every section is a plain string (nulls only cross the wire). */
+type DocFormState = { [K in keyof DocumentationInput]: string };
+
+const EMPTY_DOC: DocFormState = {
+  chiefComplaint: '', historyOfPresentingIllness: '',
+  pastMedicalHistory: '', pastSurgicalHistory: '', familyHistory: '', socialHistory: '',
+  gynaecologicalHistory: '', obstetricHistory: '', drugHistory: '',
+  rosGeneral: '', rosCardiovascular: '', rosRespiratory: '', rosGastrointestinal: '',
+  rosGenitourinary: '', rosMusculoskeletal: '', rosNeurological: '', rosDermatological: '',
+  rosEntEyes: '', rosEndocrine: '',
+  examGeneralAppearance: '', examHeadAndNeck: '', examCardiovascular: '', examRespiratory: '',
+  examAbdominal: '', examGenitourinary: '', examMusculoskeletal: '', examNeurological: '',
+  examSkin: '', examLymphatic: '',
+};
+
+function toForm(doc: ClinicalDocumentationDto | null | undefined): DocFormState {
+  if (!doc) return { ...EMPTY_DOC };
+  const pick = (v: string | null | undefined) => v ?? '';
+  return {
+    chiefComplaint: pick(doc.chiefComplaint), historyOfPresentingIllness: pick(doc.historyOfPresentingIllness),
+    pastMedicalHistory: pick(doc.pastMedicalHistory), pastSurgicalHistory: pick(doc.pastSurgicalHistory),
+    familyHistory: pick(doc.familyHistory), socialHistory: pick(doc.socialHistory),
+    gynaecologicalHistory: pick(doc.gynaecologicalHistory), obstetricHistory: pick(doc.obstetricHistory),
+    drugHistory: pick(doc.drugHistory),
+    rosGeneral: pick(doc.rosGeneral), rosCardiovascular: pick(doc.rosCardiovascular),
+    rosRespiratory: pick(doc.rosRespiratory), rosGastrointestinal: pick(doc.rosGastrointestinal),
+    rosGenitourinary: pick(doc.rosGenitourinary), rosMusculoskeletal: pick(doc.rosMusculoskeletal),
+    rosNeurological: pick(doc.rosNeurological), rosDermatological: pick(doc.rosDermatological),
+    rosEntEyes: pick(doc.rosEntEyes), rosEndocrine: pick(doc.rosEndocrine),
+    examGeneralAppearance: pick(doc.examGeneralAppearance), examHeadAndNeck: pick(doc.examHeadAndNeck),
+    examCardiovascular: pick(doc.examCardiovascular), examRespiratory: pick(doc.examRespiratory),
+    examAbdominal: pick(doc.examAbdominal), examGenitourinary: pick(doc.examGenitourinary),
+    examMusculoskeletal: pick(doc.examMusculoskeletal), examNeurological: pick(doc.examNeurological),
+    examSkin: pick(doc.examSkin), examLymphatic: pick(doc.examLymphatic),
+  };
+}
+
+function DocumentationPanel({
+  consultation, onChanged,
+}: {
+  consultation: ConsultationDetail;
+  onChanged: (c: ConsultationDetail) => void;
+}) {
+  const [form, setForm] = useState<DocFormState>(() => toForm(consultation.documentation));
+  const [autosave, setAutosave] = useState(() => {
+    try { return localStorage.getItem('jacana.autosave') !== 'off'; } catch { return true; }
+  });
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastSaved, setLastSaved] = useState<string | null>(consultation.documentation?.lastSavedAtUtc ?? null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const busy = useRef(false);
+
+  // Re-sync when the consultation (or its documentation) changes externally.
+  useEffect(() => {
+    setForm(toForm(consultation.documentation));
+  }, [consultation.documentation]);
+
+  useEffect(() => {
+    try { localStorage.setItem('jacana.autosave', autosave ? 'on' : 'off'); } catch { /* ignore */ }
+  }, [autosave]);
+
+  useEffect(() => {
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, []);
+
+  const save = async (input: DocFormState) => {
+    if (busy.current) return;
+    busy.current = true;
+    setSaveState('saving');
+    try {
+      const updated = await ConsultationService.saveDocumentation(consultation.id, input);
+      onChanged(updated);
+      setLastSaved(updated.documentation?.lastSavedAtUtc ?? new Date().toISOString());
+      setSaveState('saved');
+    } catch {
+      setSaveState('error');
+    } finally {
+      busy.current = false;
+    }
+  };
+
+  const set = (key: keyof DocFormState) => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const next = { ...form, [key]: e.target.value };
+    setForm(next);
+    setSaveState('idle');
+    if (timer.current) clearTimeout(timer.current);
+    if (autosave) {
+      timer.current = setTimeout(() => void save(next), 1200);
+    }
+  };
+
+  const saveNow = () => {
+    if (timer.current) clearTimeout(timer.current);
+    void save(form);
+  };
+
+  return (
+    <div className="rounded-lg bg-slate-50 border border-slate-200 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-slate-100/60 border-b border-slate-200">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <FileText size={12} /> Medical documentation
+        </p>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autosave}
+              onChange={(e) => setAutosave(e.target.checked)}
+              className="accent-indigo-600"
+            />
+            Autosave
+          </label>
+          {saveState === 'saving' && (
+            <span className="flex items-center gap-1 text-xs text-slate-400">
+              <Loader2 size={12} className="animate-spin" /> Saving…
+            </span>
+          )}
+          {saveState === 'saved' && lastSaved && (
+            <span className="flex items-center gap-1 text-xs text-emerald-600">
+              <CheckCircle2 size={12} /> Saved {formatTime(lastSaved)}
+            </span>
+          )}
+          {saveState === 'error' && (
+            <span className="text-xs text-red-500">Save failed</span>
+          )}
+          <button className="btn-ghost text-xs py-1" onClick={() => void saveNow()} disabled={saveState === 'saving'}>
+            <Save size={12} className="mr-1" />
+            Save
+          </button>
+        </div>
+      </div>
+
+      <div className="p-3.5 space-y-4">
+        {/* 1. Chief complaint */}
+        <Section label="1. Chief complaint (CC)">
+          <textarea className="input min-h-[70px]" value={form.chiefComplaint} onChange={set('chiefComplaint')} placeholder="Patient's own words — e.g. 'Fever and cough for 3 days'" />
+        </Section>
+
+        {/* 2. History of presenting illness */}
+        <Section label="2. History of presenting illness (HPI)">
+          <textarea className="input min-h-[110px]" value={form.historyOfPresentingIllness} onChange={set('historyOfPresentingIllness')} placeholder="Onset, duration, progression, severity, aggravating/relieving factors, associated symptoms…" />
+        </Section>
+
+        {/* 3. PMSHX */}
+        <Section label="3. Past medical & surgical history (PMSHX)">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Past medical history">
+              <textarea className="input min-h-[70px]" value={form.pastMedicalHistory} onChange={set('pastMedicalHistory')} placeholder="Chronic illnesses, admissions, blood transfusions…" />
+            </Field>
+            <Field label="Past surgical history">
+              <textarea className="input min-h-[70px]" value={form.pastSurgicalHistory} onChange={set('pastSurgicalHistory')} placeholder="Previous operations, dates, complications…" />
+            </Field>
+            <Field label="Family history">
+              <textarea className="input min-h-[70px]" value={form.familyHistory} onChange={set('familyHistory')} placeholder="Family illnesses: DM, HTN, TB, sickle cell, cancer…" />
+            </Field>
+            <Field label="Social history">
+              <textarea className="input min-h-[70px]" value={form.socialHistory} onChange={set('socialHistory')} placeholder="Smoking, alcohol, occupation, living conditions…" />
+            </Field>
+            <Field label="Gynaecological history">
+              <textarea className="input min-h-[70px]" value={form.gynaecologicalHistory} onChange={set('gynaecologicalHistory')} placeholder="LMP, cycles, parity, contraception…" />
+            </Field>
+            <Field label="Obstetric history">
+              <textarea className="input min-h-[70px]" value={form.obstetricHistory} onChange={set('obstetricHistory')} placeholder="Gravida/para, deliveries, complications…" />
+            </Field>
+            <Field label="Drug history">
+              <textarea className="input min-h-[70px]" value={form.drugHistory} onChange={set('drugHistory')} placeholder="Current medications, adherence, herbal remedies…" />
+            </Field>
+          </div>
+        </Section>
+
+        {/* 4. Review of systems */}
+        <Section label="4. Review of systems (ROS)">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="General"><textarea className="input min-h-[60px]" value={form.rosGeneral} onChange={set('rosGeneral')} placeholder="Fever, weight loss, fatigue, appetite…" /></Field>
+            <Field label="Cardiovascular"><textarea className="input min-h-[60px]" value={form.rosCardiovascular} onChange={set('rosCardiovascular')} placeholder="Chest pain, palpitations, SOB, oedema…" /></Field>
+            <Field label="Respiratory"><textarea className="input min-h-[60px]" value={form.rosRespiratory} onChange={set('rosRespiratory')} placeholder="Cough, sputum, haemoptysis, wheeze…" /></Field>
+            <Field label="Gastrointestinal"><textarea className="input min-h-[60px]" value={form.rosGastrointestinal} onChange={set('rosGastrointestinal')} placeholder="Nausea, vomiting, diarrhoea, dysphagia…" /></Field>
+            <Field label="Genitourinary"><textarea className="input min-h-[60px]" value={form.rosGenitourinary} onChange={set('rosGenitourinary')} placeholder="Dysuria, frequency, discharge…" /></Field>
+            <Field label="Musculoskeletal"><textarea className="input min-h-[60px]" value={form.rosMusculoskeletal} onChange={set('rosMusculoskeletal')} placeholder="Joint pain, swelling, stiffness…" /></Field>
+            <Field label="Neurological"><textarea className="input min-h-[60px]" value={form.rosNeurological} onChange={set('rosNeurological')} placeholder="Headache, seizures, weakness, sensory loss…" /></Field>
+            <Field label="Dermatological"><textarea className="input min-h-[60px]" value={form.rosDermatological} onChange={set('rosDermatological')} placeholder="Rash, itching, skin changes…" /></Field>
+            <Field label="ENT & eyes"><textarea className="input min-h-[60px]" value={form.rosEntEyes} onChange={set('rosEntEyes')} placeholder="Hearing, vision, sore throat, ear pain…" /></Field>
+            <Field label="Endocrine"><textarea className="input min-h-[60px]" value={form.rosEndocrine} onChange={set('rosEndocrine')} placeholder="Thirst, polyuria, heat/cold intolerance…" /></Field>
+          </div>
+        </Section>
+
+        {/* 5. Examination */}
+        <Section label="5. Examination">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="General appearance"><textarea className="input min-h-[60px]" value={form.examGeneralAppearance} onChange={set('examGeneralAppearance')} placeholder="Pallor, jaundice, cyanosis, clubbing, oedema, hydration…" /></Field>
+            <Field label="Head & neck"><textarea className="input min-h-[60px]" value={form.examHeadAndNeck} onChange={set('examHeadAndNeck')} placeholder="JVP, lymph nodes, thyroid, conjunctivae…" /></Field>
+            <Field label="Cardiovascular system"><textarea className="input min-h-[60px]" value={form.examCardiovascular} onChange={set('examCardiovascular')} placeholder="Heart sounds, murmurs, apex beat…" /></Field>
+            <Field label="Respiratory system"><textarea className="input min-h-[60px]" value={form.examRespiratory} onChange={set('examRespiratory')} placeholder="Air entry, adventitious sounds, percussion…" /></Field>
+            <Field label="Abdomen"><textarea className="input min-h-[60px]" value={form.examAbdominal} onChange={set('examAbdominal')} placeholder="Tenderness, organomegaly, ascites, bowel sounds…" /></Field>
+            <Field label="Genitourinary"><textarea className="input min-h-[60px]" value={form.examGenitourinary} onChange={set('examGenitourinary')} placeholder="External genitalia, PR/PV findings…" /></Field>
+            <Field label="Musculoskeletal"><textarea className="input min-h-[60px]" value={form.examMusculoskeletal} onChange={set('examMusculoskeletal')} placeholder="Deformities, swelling, range of movement…" /></Field>
+            <Field label="Neurological"><textarea className="input min-h-[60px]" value={form.examNeurological} onChange={set('examNeurological')} placeholder="GCS, pupils, power, tone, reflexes, sensation…" /></Field>
+            <Field label="Skin"><textarea className="input min-h-[60px]" value={form.examSkin} onChange={set('examSkin')} placeholder="Lesions, rashes, ulcers…" /></Field>
+            <Field label="Lymphatic system"><textarea className="input min-h-[60px]" value={form.examLymphatic} onChange={set('examLymphatic')} placeholder="Lymphadenopathy — site, size, consistency…" /></Field>
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="p-3 rounded-lg bg-white border border-slate-200">
+      <p className="text-xs font-semibold text-slate-600 mb-2">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-medium text-slate-500 mb-1">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
+// ─── Admit (inpatient) ──────────────────────────────────────────────────────────
+
+function AdmitPanel({
+  patientId, patientName, canConsult,
+}: {
+  consultation: ConsultationDetail | null;
+  patientId?: string;
+  patientName?: string;
+  canConsult: boolean;
+}) {
+  const { user } = useAuth();
+  const [admissions, setAdmissions] = useState<AdmissionDetail[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [wardName, setWardName] = useState('');
+  const [bedNumber, setBedNumber] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    if (!patientId) return;
+    setLoading(true);
+    try {
+      const res = await InpatientService.list(1, 10, false, patientId);
+      const details = await Promise.all(res.items.map((a) => InpatientService.detail(a.id).catch(() => null)));
+      setAdmissions(details.filter((d): d is AdmissionDetail => d !== null));
+    } catch {
+      setAdmissions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  const admit = async () => {
+    if (!patientId || !wardName.trim() || !bedNumber.trim()) {
+      toast.error('Ward name and bed number are required.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await InpatientService.admit({
+        patientId,
+        admittingClinicianUserId: user?.id ?? '',
+        wardName: wardName.trim(),
+        bedNumber: bedNumber.trim(),
+      });
+      toast.success('Patient admitted');
+      setWardName('');
+      setBedNumber('');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to admit patient');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const discharge = async (id: string) => {
+    try {
+      await InpatientService.discharge(id);
+      toast.success('Patient discharged');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to discharge patient');
+    }
+  };
+
+  if (!patientId) {
+    return (
+      <div className="text-center py-12">
+        <BedDouble size={28} className="text-slate-300 mx-auto mb-3" />
+        <p className="text-sm text-slate-400">Select a patient to manage admissions.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Inpatient admission</p>
+          <p className="text-xs text-slate-400 mt-0.5">{patientName ?? ''}</p>
+        </div>
+        <button className="btn-ghost text-xs" onClick={() => void load()}>
+          <RefreshCw size={12} className="mr-1" />
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-3 py-10">
+          <Loader2 size={18} className="animate-spin text-indigo-600" />
+          <p className="text-sm text-slate-400">Loading admissions…</p>
+        </div>
+      ) : admissions.length === 0 ? (
+        <div className="text-center py-10">
+          <BedDouble size={28} className="text-slate-300 mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Patient is not currently admitted.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {admissions.map((a) => (
+            <div key={a.id} className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{a.wardName} · Bed {a.bedNumber}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Admitted {formatDateTime(a.admittedAtUtc)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2.5 py-1 rounded-full border ${
+                    a.status === 'Admitted' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}>
+                    {a.status}
+                  </span>
+                  {a.status === 'Admitted' && canConsult && (
+                    <button className="btn-ghost text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => void discharge(a.id)}>
+                      Discharge
+                    </button>
+                  )}
+                </div>
+              </div>
+              {a.notes.length > 0 && (
+                <ul className="mt-3 pt-3 border-t border-slate-200 space-y-1.5 text-sm">
+                  {a.notes.map((n, i) => (
+                    <li key={i} className="text-slate-600">
+                      {n.content}
+                      <span className="block text-[11px] text-slate-400">{formatDateTime(n.recordedAtUtc)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {canConsult && (
+        <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Admit patient</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input className="input" placeholder="Ward name (e.g. Male Medical)" value={wardName} onChange={(e) => setWardName(e.target.value)} />
+            <input className="input" placeholder="Bed number" value={bedNumber} onChange={(e) => setBedNumber(e.target.value)} />
+          </div>
+          <div className="flex justify-end mt-3">
+            <button className="btn-primary" disabled={saving} onClick={() => void admit()}>
+              {saving && <Loader2 size={15} className="animate-spin" />}
+              Admit
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Referral ───────────────────────────────────────────────────────────────────
+
+const REFERRAL_PRIORITIES = ['Routine', 'Urgent', 'Emergency'];
+
+function ReferralPanel({
+  consultation, patientName, canConsult, onChanged,
+}: {
+  consultation: ConsultationDetail | null;
+  patientName?: string;
+  canConsult: boolean;
+  onChanged: (c: ConsultationDetail) => void;
+}) {
+  const [form, setForm] = useState({
+    referredToFacility: '',
+    referredToUnit: '',
+    reason: '',
+    priority: 'Routine' as ReferralInput['priority'],
+    notes: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!consultation) {
+      toast.error('Start a consultation before referring.');
+      return;
+    }
+    if (!form.referredToFacility.trim() || !form.reason.trim()) {
+      toast.error('Destination and reason are required.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await ConsultationService.createReferral(consultation.id, {
+        referredToFacility: form.referredToFacility.trim(),
+        referredToUnit: form.referredToUnit.trim() || null,
+        reason: form.reason.trim(),
+        priority: form.priority,
+        notes: form.notes.trim() || null,
+      });
+      onChanged(updated);
+      toast.success('Referral created');
+      setForm({ referredToFacility: '', referredToUnit: '', reason: '', priority: 'Routine', notes: '' });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create referral');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const referrals = consultation?.referrals ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Referral</p>
+          <p className="text-xs text-slate-400 mt-0.5">{patientName ?? ''} — escalate care to another unit or facility</p>
+        </div>
+        <span className="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+          {referrals.length} referral{referrals.length === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {referrals.length > 0 && (
+        <div className="space-y-3">
+          {referrals.map((r) => (
+            <div key={r.id} className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{r.referredToFacility}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {r.referredToUnit ? `${r.referredToUnit} · ` : ''}{formatDateTime(r.referredAtUtc)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    r.priority === 'Emergency' ? 'bg-red-100 text-red-700'
+                      : r.priority === 'Urgent' ? 'bg-amber-100 text-amber-700'
+                        : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {r.priority}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
+                    {r.status}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600 mt-2">{r.reason}</p>
+              {r.notes && <p className="text-xs text-slate-400 mt-1">{r.notes}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {canConsult && (
+        <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">New referral</p>
+          <div className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input
+                className="input"
+                placeholder="Referred to facility (e.g. Kenyatta National Hospital)"
+                value={form.referredToFacility}
+                onChange={(e) => setForm({ ...form, referredToFacility: e.target.value })}
+              />
+              <input
+                className="input"
+                placeholder="Unit / clinic (e.g. Orthopaedics)"
+                value={form.referredToUnit}
+                onChange={(e) => setForm({ ...form, referredToUnit: e.target.value })}
+              />
+            </div>
+            <textarea
+              className="input min-h-[80px]"
+              placeholder="Reason for referral"
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+            />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <select
+                className="input"
+                value={form.priority}
+                onChange={(e) => setForm({ ...form, priority: e.target.value as ReferralInput['priority'] })}
+              >
+                {REFERRAL_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+              </select>
+              <input
+                className="input"
+                placeholder="Notes (optional)"
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end mt-3">
+            <button className="btn-primary" disabled={saving} onClick={() => void submit()}>
+              {saving && <Loader2 size={15} className="animate-spin" />}
+              Create referral
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
