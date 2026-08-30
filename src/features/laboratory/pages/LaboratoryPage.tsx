@@ -23,7 +23,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export default function LaboratoryPage() {
-  const { user, permissions } = useAuth();
+  const { permissions } = useAuth();
   const [orders, setOrders] = useState<LabRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);

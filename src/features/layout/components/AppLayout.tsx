@@ -32,7 +32,7 @@ import {
   Hospital,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/components/AuthContext';
-import { hasAnyPermission, hasPermission, PERMISSIONS, REPORT_PERMISSIONS, type Permission } from '@/lib/permissions';
+import { hasAnyPermission, hasPermission, PERMISSIONS, type Permission } from '@/lib/permissions';
 import { initials } from '@/lib/format';
 
 interface NavItem {

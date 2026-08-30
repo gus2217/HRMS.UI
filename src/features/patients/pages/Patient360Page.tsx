@@ -7,6 +7,34 @@ import { ConsultationService } from '@/features/consultations/services/consultat
 import type { PatientDetail, PatientClinicalHistory } from '@/features/consultations/types/consultation';
 import { formatDate, formatDateTime, ageFromDateOfBirth } from '@/lib/format';
 
+const INSURANCE_LABELS: Record<string, string> = {
+  Sha: 'SHA insurance',
+  Other: 'Other insurance',
+  Private: 'Private (self-pay)',
+};
+
+const CLINIC_LABELS: Record<string, string> = {
+  GeneralOutpatient: 'General outpatient',
+  Counselling: 'Counselling',
+  Laboratory: 'Laboratory',
+  Immunization: 'Immunization',
+  Wellness: 'Wellness',
+  ReproductiveHealth: 'Reproductive health (RH)',
+  ChildWelfare: 'Child welfare',
+  MaternalChildHealth: 'Maternal & child health (MCH)',
+  Antenatal: 'Antenatal (ANC)',
+  Postnatal: 'Postnatal (PNC)',
+  FamilyPlanning: 'Family planning',
+  ComprehensiveCareCentre: 'Comprehensive care (CCC)',
+  Tuberculosis: 'TB clinic',
+  Nutrition: 'Nutrition',
+  Dental: 'Dental',
+  Eye: 'Eye clinic',
+  Ent: 'ENT',
+  Physiotherapy: 'Physiotherapy / rehab',
+  AdolescentYouthFriendly: 'Adolescent & youth friendly',
+};
+
 export default function Patient360Page() {
   const { id } = useParams<{ id: string }>();
   const [patient, setPatient] = useState<PatientDetail | null>(null);
@@ -96,8 +124,16 @@ export default function Patient360Page() {
             <p className="text-slate-700">{patient.county}{patient.subCounty ? `, ${patient.subCounty}` : ''}{patient.ward ? `, ${patient.ward}` : ''}</p>
           </div>
           <div>
-            <p className="text-xs text-slate-400 mb-1">National ID</p>
-            <p className="text-slate-700">{patient.shaNumber ? `SHA ${patient.shaNumber}` : '—'}</p>
+            <p className="text-xs text-slate-400 mb-1">Insurance</p>
+            <p className="text-slate-700">
+              {patient.insuranceNumber
+                ? `${INSURANCE_LABELS[patient.insuranceType] ?? patient.insuranceType} · ${patient.insuranceNumber}`
+                : INSURANCE_LABELS[patient.insuranceType] ?? patient.insuranceType}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 mb-1">Clinic</p>
+            <p className="text-slate-700">{CLINIC_LABELS[patient.clinicType] ?? patient.clinicType}</p>
           </div>
           <div>
             <p className="text-xs text-slate-400 mb-1">Date of birth</p>

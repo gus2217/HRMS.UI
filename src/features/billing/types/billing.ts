@@ -18,6 +18,7 @@ export interface InvoiceDetail {
   status: string;
   totalAmount: number;
   primaryPaymentMethod: string | null;
+  createdAtUtc: string;
   lines: InvoiceLineDto[];
 }
 

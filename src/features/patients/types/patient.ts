@@ -38,7 +38,9 @@ export interface PatientDetail {
   gender: string;
   maritalStatus: string;
   phone: string | null;
-  shaNumber: string | null;
+  insuranceType: string;
+  insuranceNumber: string | null;
+  clinicType: string;
   county: string;
   subCounty: string | null;
   ward: string | null;

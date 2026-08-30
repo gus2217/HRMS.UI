@@ -127,7 +127,7 @@ export default function BillingPage() {
       setQuery('');
       setSelected(null);
       setLines([{ serviceCode: '', description: '', quantity: 1, unitPrice: 0 }]);
-      void load(page);
+      void load(page, status);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to issue invoice');
     } finally {
@@ -229,7 +229,7 @@ export default function BillingPage() {
               onPaid={(r) => {
                 toast.success(`Payment of ${formatMoney(r.amountPaid)} recorded`);
                 setActive((prev) => (prev ? { ...prev, status: 'Paid', detail: prev.detail ? { ...prev.detail, status: 'Paid' } : undefined } : prev));
-                void load(page);
+                void load(page, status);
               }}
             />
           ) : (

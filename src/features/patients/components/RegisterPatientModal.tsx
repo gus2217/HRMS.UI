@@ -2,6 +2,10 @@
 // RegisterPatientModal.tsx
 // Location: src/features/patients/components/RegisterPatientModal.tsx
 // ============================================================
+// Phase 1: front-desk registration is intentionally light.
+// - No marital status / next of kin (confidential — clinicians fill later).
+// - Insurance section: SHA / Other insurer / Private (self-pay).
+// - Clinic type: where the patient wants to be seen.
 
 import { useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
@@ -16,7 +20,39 @@ interface Props {
 }
 
 const GENDERS = ['Female', 'Male', 'Other'];
-const MARITAL = ['Single', 'Married', 'Divorced', 'Widowed'];
+
+const INSURANCE_TYPES = [
+  { value: 'Sha', label: 'SHA insurance' },
+  { value: 'Other', label: 'Other insurance' },
+  { value: 'Private', label: 'Private (self-pay)' },
+];
+
+// Clinic types align with the backend ClinicType enum. Kenyan facility
+// terminology (KEPH-aligned) so medics and nurses recognise them at a glance.
+const CLINIC_TYPES = [
+  { value: 'GeneralOutpatient', label: 'General outpatient' },
+  { value: 'Counselling', label: 'Counselling' },
+  { value: 'Laboratory', label: 'Laboratory' },
+  { value: 'Immunization', label: 'Immunization' },
+  { value: 'Wellness', label: 'Wellness' },
+  { value: 'ReproductiveHealth', label: 'Reproductive health (RH)' },
+  { value: 'ChildWelfare', label: 'Child welfare' },
+  { value: 'MaternalChildHealth', label: 'Maternal & child health (MCH)' },
+  { value: 'Antenatal', label: 'Antenatal (ANC)' },
+  { value: 'Postnatal', label: 'Postnatal (PNC)' },
+  { value: 'FamilyPlanning', label: 'Family planning' },
+  { value: 'ComprehensiveCareCentre', label: 'Comprehensive care (CCC)' },
+  { value: 'Tuberculosis', label: 'TB clinic' },
+  { value: 'Nutrition', label: 'Nutrition' },
+  { value: 'Dental', label: 'Dental' },
+  { value: 'Eye', label: 'Eye clinic' },
+  { value: 'Ent', label: 'ENT' },
+  { value: 'Physiotherapy', label: 'Physiotherapy / rehab' },
+  { value: 'AdolescentYouthFriendly', label: 'Adolescent & youth friendly' },
+];
+
+const insuranceNumberLabel = (type: string) =>
+  type === 'Sha' ? 'SHA number' : type === 'Other' ? 'Insurance number' : '';
 
 export default function RegisterPatientModal({ onClose, onCreated }: Props) {
   const [form, setForm] = useState({
@@ -24,17 +60,15 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
     lastName: '',
     dateOfBirth: '',
     gender: 'Female',
-    maritalStatus: 'Single',
     phone: '',
     nationalId: '',
-    shaNumber: '',
+    insuranceType: 'Sha',
+    insuranceNumber: '',
+    clinicType: 'GeneralOutpatient',
     county: 'Nairobi',
     subCounty: '',
     ward: '',
     line1: '',
-    nextOfKinName: '',
-    nextOfKinRelationship: '',
-    nextOfKinPhone: '',
   });
   const [saving, setSaving] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
@@ -48,8 +82,8 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
       toast.error('First name, last name, date of birth and phone are required.');
       return;
     }
-    if (form.nextOfKinName.trim() && !form.nextOfKinPhone.trim()) {
-      toast.error('Next of kin phone is required when next of kin details are entered.');
+    if (form.insuranceType !== 'Private' && !form.insuranceNumber.trim()) {
+      toast.error('Insurance number is required for insured patients.');
       return;
     }
     setSaving(true);
@@ -59,24 +93,15 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
         lastName: form.lastName.trim(),
         dateOfBirth: form.dateOfBirth, // yyyy-MM-dd — matches the backend DateOnly binding
         gender: form.gender,
-        maritalStatus: form.maritalStatus,
         phone: form.phone.trim(),
         nationalId: form.nationalId.trim() || null,
-        shaNumber: form.shaNumber.trim() || null,
+        insuranceType: form.insuranceType,
+        insuranceNumber: form.insuranceNumber.trim() || null,
+        clinicType: form.clinicType,
         county: form.county.trim(),
         subCounty: form.subCounty.trim() || null,
         ward: form.ward.trim() || null,
         line1: form.line1.trim() || null,
-        nextOfKin:
-          form.nextOfKinName.trim() && form.nextOfKinRelationship.trim()
-            ? [
-                {
-                  fullName: form.nextOfKinName.trim(),
-                  relationship: form.nextOfKinRelationship.trim(),
-                  phone: form.nextOfKinPhone.trim() || null,
-                },
-              ]
-            : undefined,
       });
       setDuplicates(res.duplicateCandidates ?? []);
       if (res.duplicateCandidates && res.duplicateCandidates.length > 0) {
@@ -126,14 +151,13 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
                 {GENDERS.map((g) => <option key={g}>{g}</option>)}
               </select>
             </Field>
-            <Field label="Marital status">
-              <select className="input" value={form.maritalStatus} onChange={set('maritalStatus')}>
-                {MARITAL.map((m) => <option key={m}>{m}</option>)}
-              </select>
-            </Field>
             <Field label="Phone *"><input className="input" placeholder="+2547…" value={form.phone} onChange={set('phone')} /></Field>
             <Field label="National ID"><input className="input" value={form.nationalId} onChange={set('nationalId')} /></Field>
-            <Field label="SHA number"><input className="input" value={form.shaNumber} onChange={set('shaNumber')} /></Field>
+            <Field label="Clinic *">
+              <select className="input" value={form.clinicType} onChange={set('clinicType')}>
+                {CLINIC_TYPES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </Field>
             <Field label="County"><input className="input" value={form.county} onChange={set('county')} /></Field>
             <Field label="Sub-county"><input className="input" value={form.subCounty} onChange={set('subCounty')} /></Field>
             <Field label="Ward / location"><input className="input" value={form.ward} onChange={set('ward')} /></Field>
@@ -141,11 +165,18 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
           </div>
 
           <div className="pt-3 border-t border-slate-200">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Next of kin (optional)</p>
-            <div className="grid sm:grid-cols-3 gap-4">
-              <Field label="Full name"><input className="input" value={form.nextOfKinName} onChange={set('nextOfKinName')} /></Field>
-              <Field label="Relationship"><input className="input" value={form.nextOfKinRelationship} onChange={set('nextOfKinRelationship')} /></Field>
-              <Field label="Phone"><input className="input" value={form.nextOfKinPhone} onChange={set('nextOfKinPhone')} /></Field>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Insurance</p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Payment type *">
+                <select className="input" value={form.insuranceType} onChange={set('insuranceType')}>
+                  {INSURANCE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </Field>
+              {form.insuranceType !== 'Private' && (
+                <Field label={`${insuranceNumberLabel(form.insuranceType)} *`}>
+                  <input className="input" value={form.insuranceNumber} onChange={set('insuranceNumber')} />
+                </Field>
+              )}
             </div>
           </div>
 

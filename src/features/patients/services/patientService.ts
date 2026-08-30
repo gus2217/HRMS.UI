@@ -15,15 +15,15 @@ export interface RegisterPatientInput {
   lastName: string;
   dateOfBirth: string;
   gender: string;
-  maritalStatus: string;
   phone: string;
   nationalId?: string | null;
-  shaNumber?: string | null;
+  insuranceType: string;
+  insuranceNumber?: string | null;
+  clinicType: string;
   county: string;
   subCounty?: string | null;
   ward?: string | null;
   line1?: string | null;
-  nextOfKin?: { fullName: string; relationship: string; phone: string | null }[];
 }
 
 export const PatientService = {

@@ -48,7 +48,7 @@ interface Props {
 }
 
 export default function ConsultationDetailView({ consultation, patientId, patientName, patientNumber, onChanged }: Props) {
-  const { user, permissions } = useAuth();
+  const { permissions } = useAuth();
   const [tab, setTab] = useState<Tab>(consultation ? 'consult' : 'record');
 
   const canConsult = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
@@ -114,7 +114,7 @@ export default function ConsultationDetailView({ consultation, patientId, patien
 
 // ─── Medical record ─────────────────────────────────────────────────────────────
 
-function MedicalRecordPanel({ patientId, patientName, patientNumber }: { patientId?: string; patientName?: string; patientNumber?: string }) {
+function MedicalRecordPanel({ patientId }: { patientId?: string; patientName?: string; patientNumber?: string }) {
   const [patient, setPatient] = useState<PatientDetail | null>(null);
   const [loading, setLoading] = useState(patientId !== undefined);
 

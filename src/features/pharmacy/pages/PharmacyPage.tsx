@@ -182,7 +182,7 @@ export default function PharmacyPage() {
                             {item.quantityDispensed}/{item.quantityPrescribed} dispensed · {item.status}
                           </p>
                         </div>
-                        {canDispense && !done && active.detail.status !== 'Cancelled' && (
+                        {canDispense && !done && active.detail?.status !== 'Cancelled' && (
                           <button
                             className="btn-ghost text-xs text-emerald-600 border-emerald-300 hover:bg-emerald-50 shrink-0"
                             onClick={() => void dispense(active.detail!.id, item.id, remaining)}
@@ -213,7 +213,7 @@ export default function PharmacyPage() {
         <CreatePrescriptionModal
           drugs={drugs}
           onClose={() => setShowCreate(false)}
-          onCreated={(p) => {
+          onCreated={() => {
             setShowCreate(false);
             toast.success('Prescription created');
             void load(page);

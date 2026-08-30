@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from '@/features/layout/components/AppLayout';
-import { PERMISSIONS, REPORT_PERMISSIONS, defaultPathFor } from '@/lib/permissions';
+import { PERMISSIONS, defaultPathFor } from '@/lib/permissions';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import type { ComponentType } from 'react';
 
