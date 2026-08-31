@@ -30,6 +30,7 @@ import {
   Menu,
   X,
   Hospital,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasAnyPermission, hasPermission, PERMISSIONS, type Permission } from '@/lib/permissions';
@@ -48,6 +49,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/patients', label: 'Patients', icon: <Users size={17} />, permission: PERMISSIONS.PATIENT_VIEW },
   { to: '/consultations', label: 'Consultations', icon: <Stethoscope size={17} />, permission: PERMISSIONS.CLINICAL_VIEW },
   { to: '/queue', label: 'Queue', icon: <Users size={17} />, permission: PERMISSIONS.QUEUE_VIEW },
+  { to: '/appointments', label: 'Appointments', icon: <CalendarDays size={17} />, permission: PERMISSIONS.APPOINTMENT_VIEW },
   { to: '/pharmacy', label: 'Pharmacy', icon: <Pill size={17} />, permission: PERMISSIONS.PHARMACY_DISPENSE },
   { to: '/lab', label: 'Laboratory', icon: <FlaskConical size={17} />, permission: PERMISSIONS.LABORATORY_ORDER },
   { to: '/billing', label: 'Billing', icon: <Receipt size={17} />, permission: PERMISSIONS.BILLING_VIEW },

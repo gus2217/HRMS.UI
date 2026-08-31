@@ -91,6 +91,32 @@ export function MedicalRecordTimeline({
         <span className="text-xs text-slate-400">{visits.length} visit{visits.length === 1 ? '' : 's'}</span>
       </div>
 
+      {/* Appointments */}
+      {record.appointments.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Appointments ({record.appointments.length})
+          </p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {record.appointments.map((a) => (
+              <div key={a.id} className="rounded-lg bg-slate-50 border border-slate-200 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-800">{formatDate(a.scheduledAtUtc)}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                    a.status === 'Scheduled' ? 'bg-sky-100 text-sky-700'
+                      : a.status === 'Completed' ? 'bg-emerald-100 text-emerald-700'
+                        : a.status === 'Cancelled' ? 'bg-slate-100 text-slate-500'
+                          : a.status === 'NoShow' ? 'bg-red-100 text-red-700'
+                            : 'bg-indigo-100 text-indigo-700'
+                  }`}>{a.status}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">{a.type}{a.reason ? ` · ${a.reason}` : ''}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Visit timeline */}
       <div className="relative space-y-4 pl-5 border-l-2 border-slate-100">
         {visits.map((visit) => {
@@ -121,6 +147,13 @@ function VisitCard({ visit, open, onToggle }: { visit: EnrichedVisit; open: bool
           <span className="text-xs text-slate-400">{formatDateTime(visit.startedAtUtc)}</span>
         </div>
         <div className="flex items-center gap-2">
+          {visit.source && visit.source !== 'Direct' && (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+              visit.source === 'Appointment' ? 'bg-violet-100 text-violet-700' : 'bg-cyan-100 text-cyan-700'
+            }`}>
+              {visit.source}
+            </span>
+          )}
           <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
             visit.status === 'Completed' ? 'bg-emerald-100 text-emerald-700'
               : visit.status === 'InConsultation' ? 'bg-sky-100 text-sky-700'

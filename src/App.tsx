@@ -9,6 +9,7 @@ const PatientsPage = lazy(() => import('./features/patients/pages/PatientsPage')
 const Patient360Page = lazy(() => import('./features/patients/pages/Patient360Page'));
 const ConsultationsPage = lazy(() => import('./features/consultations/pages/ConsultationsPage'));
 const QueuePage = lazy(() => import('./features/queue/pages/QueuePage'));
+const AppointmentsPage = lazy(() => import('./features/appointments/pages/AppointmentsPage'));
 const PharmacyPage = lazy(() => import('./features/pharmacy/pages/PharmacyPage'));
 const LaboratoryPage = lazy(() => import('./features/laboratory/pages/LaboratoryPage'));
 const BillingPage = lazy(() => import('./features/billing/pages/BillingPage'));
@@ -49,6 +50,7 @@ export default function App() {
             Patient360Page,
             ConsultationsPage,
             QueuePage,
+            AppointmentsPage,
             PharmacyPage,
             LaboratoryPage,
             BillingPage,

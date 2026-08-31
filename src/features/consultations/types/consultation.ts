@@ -124,9 +124,32 @@ export interface ConsultationRecord {
   notes: ClinicalNoteDto[];
   documentation: ClinicalDocumentationDto | null;
   referrals: ReferralDto[];
+  source: string;
 }
 
 export interface PatientMedicalRecord {
   patientId: string;
   consultations: ConsultationRecord[];
+  appointments: AppointmentDto[];
+}
+
+/** Appointment summary embedded in the medical record. */
+export interface AppointmentDto {
+  id: string;
+  patientId: string;
+  patientNumber: string;
+  patientName: string;
+  clinicType: string;
+  type: string;
+  status: string;
+  scheduledAtUtc: string;
+  durationMinutes: number;
+  reason: string | null;
+  recurrenceGroupId: string | null;
+  recurrencePattern: string;
+  createdByUserId: string;
+  createdAtUtc: string;
+  consultationId: string | null;
+  startedAtUtc: string | null;
+  completedAtUtc: string | null;
 }

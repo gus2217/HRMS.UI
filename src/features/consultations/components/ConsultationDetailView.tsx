@@ -26,8 +26,10 @@ import toast from 'react-hot-toast';
 import {
   Loader2, Activity, ClipboardList, CheckCircle2, UserRound, Pill, TestTube2,
   Receipt, Stethoscope, ShieldAlert, FileText, Users, BedDouble, Send, Save, RefreshCw, ChevronDown,
+  CalendarDays,
 } from 'lucide-react';
 import Icd10Search from './Icd10Search';
+import PatientAppointmentsPanel from '@/features/appointments/components/PatientAppointmentsPanel';
 import { ConsultationService, type DocumentationInput, type ReferralInput } from '../services/consultationService';
 import { PharmacyService } from '@/features/pharmacy/services/pharmacyService';
 import { LaboratoryService } from '@/features/laboratory/services/laboratoryService';
@@ -47,7 +49,7 @@ import { formatDate, formatDateTime, formatMoney, ageFromDateOfBirth } from '@/l
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
-type Tab = 'record' | 'consult' | 'prescribe' | 'tests' | 'bill' | 'admit' | 'referral';
+type Tab = 'record' | 'consult' | 'prescribe' | 'tests' | 'bill' | 'admit' | 'referral' | 'appointments';
 
 interface Props {
   consultation: ConsultationDetail | null;
@@ -73,6 +75,7 @@ export default function ConsultationDetailView({ consultation, patientId, patien
     { id: 'bill', label: 'Bill', icon: <Receipt size={14} />, visible: true },
     { id: 'admit', label: 'Admit', icon: <BedDouble size={14} />, visible: canConsult },
     { id: 'referral', label: 'Referral', icon: <Send size={14} />, visible: canConsult },
+    { id: 'appointments', label: 'Appointments', icon: <CalendarDays size={14} />, visible: true },
   ];
 
   return (
@@ -127,6 +130,10 @@ export default function ConsultationDetailView({ consultation, patientId, patien
 
       {tab === 'referral' && (
         <ReferralPanel consultation={consultation} patientName={patientName} canConsult={canConsult} onChanged={onChanged} />
+      )}
+
+      {tab === 'appointments' && (
+        <PatientAppointmentsPanel patientId={patientId} />
       )}
     </div>
   );

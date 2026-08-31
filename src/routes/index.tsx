@@ -12,6 +12,7 @@ export interface AppPages {
   Patient360Page: ComponentType;
   ConsultationsPage: ComponentType;
   QueuePage: ComponentType;
+  AppointmentsPage: ComponentType;
   PharmacyPage: ComponentType;
   LaboratoryPage: ComponentType;
   BillingPage: ComponentType;
@@ -83,6 +84,16 @@ const AppRoutes = ({ pages }: { pages: AppPages }) => (
         <ProtectedRoute permission={PERMISSIONS.QUEUE_VIEW}>
           <AppLayout>
             <pages.QueuePage />
+          </AppLayout>
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/appointments"
+      element={
+        <ProtectedRoute permission={PERMISSIONS.APPOINTMENT_VIEW}>
+          <AppLayout>
+            <pages.AppointmentsPage />
           </AppLayout>
         </ProtectedRoute>
       }
