@@ -26,7 +26,7 @@ import toast from 'react-hot-toast';
 import {
   Loader2, Activity, ClipboardList, CheckCircle2, UserRound, Pill, TestTube2,
   Receipt, Stethoscope, ShieldAlert, FileText, Users, BedDouble, Send, Save, RefreshCw, ChevronDown,
-  CalendarDays,
+  CalendarDays, History,
 } from 'lucide-react';
 import Icd10Search from './Icd10Search';
 import PatientAppointmentsPanel from '@/features/appointments/components/PatientAppointmentsPanel';
@@ -333,6 +333,34 @@ function ConsultationWorkPanel({
     }
   };
 
+  const carryForward = async () => {
+    if (!consultation) return;
+    const missing = consultation.priorDiagnoses.filter(
+      (p) => !consultation.diagnoses.some((d) => d.icdCode === p.icdCode),
+    );
+    if (missing.length === 0) {
+      toast.success('All prior diagnoses are already recorded.');
+      return;
+    }
+    setBusy(true);
+    try {
+      let updated = consultation;
+      for (const d of missing) {
+        updated = await ConsultationService.recordDiagnosis(consultation.id, {
+          icdCode: d.icdCode,
+          description: d.description,
+          isPrimary: d.isPrimary,
+        });
+      }
+      onChanged(updated);
+      toast.success(`Carried forward ${missing.length} diagnosis${missing.length === 1 ? '' : 'es'}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to carry forward');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!consultation) {
     return (
       <div className="text-center py-10">
@@ -368,6 +396,39 @@ function ConsultationWorkPanel({
         </span>
       </div>
 
+      {/* Follow-up context — prior visit's diagnoses, carry-forward */}
+      {consultation.previousConsultationId && (
+        <div className="p-3.5 rounded-lg bg-violet-50 border border-violet-200">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
+              <History size={12} /> Follow-up visit
+            </p>
+            {consultation.priorDiagnoses.length > 0 && canDiagnose && (
+              <button
+                className="text-xs font-medium text-violet-700 hover:text-violet-900"
+                disabled={busy || consultation.status === 'Completed'}
+                onClick={() => void carryForward()}
+              >
+                {busy ? <Loader2 size={12} className="animate-spin" /> : 'Carry forward diagnoses'}
+              </button>
+            )}
+          </div>
+          {consultation.priorDiagnoses.length === 0 ? (
+            <p className="text-xs text-violet-500">This visit continues an earlier consultation.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {consultation.priorDiagnoses.map((d, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 shrink-0">{d.icdCode}</span>
+                  <span className="text-violet-800">{d.description}</span>
+                  {d.isPrimary && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-200 text-violet-700 shrink-0">Primary</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Triage */}
       <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -388,15 +449,17 @@ function ConsultationWorkPanel({
         )}
       </div>
 
-      {/* Begin clinical phase */}
-      {(consultation.status === 'Triaged' || consultation.status === 'AwaitingClinician') && canConsult && (
+      {/* Begin clinical phase — also shown for Registered so a clinician can start
+          a freshly-opened consultation straight into clinical work (skip triage). */}
+      {(consultation.status === 'Registered' || consultation.status === 'Triaged' || consultation.status === 'AwaitingClinician') && canConsult && (
         <button
-          className="btn-ghost w-full text-sky-600 border-sky-300 hover:bg-sky-50"
+          className="btn-primary w-full"
           disabled={busy}
           onClick={() => void run(() => ConsultationService.begin(consultation.id))}
         >
           {busy && <Loader2 size={15} className="animate-spin" />}
-          Begin clinical phase
+          <Stethoscope size={15} />
+          {consultation.status === 'Registered' ? 'Start consultation' : 'Begin clinical phase'}
         </button>
       )}
 

@@ -84,6 +84,10 @@ export interface ConsultationDetail {
   notes: ClinicalNoteDto[];
   documentation: ClinicalDocumentationDto | null;
   referrals: ReferralDto[];
+  source: string;
+  sourceReferenceId: string | null;
+  previousConsultationId: string | null;
+  priorDiagnoses: DiagnosisDto[];
 }
 
 export interface ConsultationSummary {
@@ -125,6 +129,7 @@ export interface ConsultationRecord {
   documentation: ClinicalDocumentationDto | null;
   referrals: ReferralDto[];
   source: string;
+  previousConsultationId: string | null;
 }
 
 export interface PatientMedicalRecord {

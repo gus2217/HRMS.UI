@@ -14,6 +14,7 @@ export const AppointmentService = {
     scheduledAtUtc: string;
     durationMinutes: number;
     reason?: string | null;
+    previousConsultationId?: string | null;
     recurrencePattern?: string | null;
     recurrenceCount?: number;
     recurrenceEndDate?: string | null;
@@ -23,6 +24,7 @@ export const AppointmentService = {
       durationMinutes: input.durationMinutes || 20,
       recurrencePattern: input.recurrencePattern || 'None',
       recurrenceCount: input.recurrenceCount || 1,
+      previousConsultationId: input.previousConsultationId || null,
     });
   },
 
@@ -81,7 +83,7 @@ export const AppointmentService = {
     return http.get<PagedResult<AppointmentRequest>>(`/appointment-requests?${q.toString()}`);
   },
 
-  approveRequest(id: string, input: { scheduledAtUtc: string; durationMinutes: number; type: string }): Promise<Appointment> {
+  approveRequest(id: string, input: { scheduledAtUtc: string; durationMinutes: number; type: string; previousConsultationId?: string | null }): Promise<Appointment> {
     return http.post<Appointment>(`/appointment-requests/${id}/approve`, input);
   },
 

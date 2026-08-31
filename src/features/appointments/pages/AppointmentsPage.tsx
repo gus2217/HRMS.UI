@@ -13,12 +13,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Loader2, Plus, CalendarDays, Clock, CheckCircle2, XCircle, RefreshCw, Send, Stethoscope,
+  Loader2, Plus, CalendarDays, Clock, CheckCircle2, XCircle, RefreshCw, Send, Stethoscope, History,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppointmentService } from '../services/appointmentService';
 import type { Appointment, AppointmentRequest } from '../types/appointment';
 import { clinicLabel } from '@/features/clinical/clinics';
+import { formatDate } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import AppointmentCalendar from '../components/AppointmentCalendar';
@@ -55,6 +56,7 @@ export default function AppointmentsPage() {
 
   const [monthAppts, setMonthAppts] = useState<Appointment[]>([]);
   const [todayAppts, setTodayAppts] = useState<Appointment[]>([]);
+  const [allAppts, setAllAppts] = useState<Appointment[]>([]);
   const [requests, setRequests] = useState<AppointmentRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showBook, setShowBook] = useState(false);
@@ -70,13 +72,15 @@ export default function AppointmentsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [monthRes, todayRes, reqRes] = await Promise.all([
+      const [monthRes, todayRes, allRes, reqRes] = await Promise.all([
         AppointmentService.calendar(year, month),
         AppointmentService.today(),
+        AppointmentService.list({ pageSize: 200 }).then((r) => r.items),
         AppointmentService.listRequests('Pending').catch(() => ({ items: [] as AppointmentRequest[] })),
       ]);
       setMonthAppts(monthRes);
       setTodayAppts(todayRes);
+      setAllAppts(allRes);
       setRequests(reqRes.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load appointments');
@@ -274,6 +278,83 @@ export default function AppointmentsPage() {
             onNextMonth={() => setMonth((m) => (m === 12 ? (setYear((y) => y + 1), 1) : m + 1))}
           />
         </div>
+      </div>
+
+      {/* Full appointment list — below today's queue, the whole book */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+            <CalendarDays size={15} className="text-indigo-600" /> All appointments
+          </h2>
+          <span className="text-xs text-slate-400">{allAppts.length} total</span>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center gap-3 py-10">
+            <Loader2 size={18} className="animate-spin text-indigo-600" />
+            <p className="text-sm text-slate-400">Loading…</p>
+          </div>
+        ) : allAppts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+            <CalendarDays size={26} className="text-slate-300" />
+            <p className="text-sm text-slate-400">No appointments booked yet.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Patient</th>
+                  <th>Clinic</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {allAppts.map((a) => (
+                  <tr key={a.id} className="hover:bg-slate-50">
+                    <td className="text-slate-600 text-xs whitespace-nowrap">
+                      {formatDate(a.scheduledAtUtc)}
+                      <span className="block text-[11px] text-slate-400">{timeLabel(a.scheduledAtUtc)}</span>
+                    </td>
+                    <td>
+                      <p className="text-sm font-medium text-slate-800">{a.patientName || '—'}</p>
+                      {a.previousConsultationId && (
+                        <p className="text-[10px] text-violet-500 flex items-center gap-0.5">
+                          <History size={10} /> follow-up
+                        </p>
+                      )}
+                    </td>
+                    <td className="text-xs text-slate-500">{clinicLabel(a.clinicType)}</td>
+                    <td className="text-xs text-slate-500">
+                      {a.type}
+                      {a.recurrenceGroupId ? ' · recurring' : ''}
+                    </td>
+                    <td>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[a.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                        {a.status}
+                      </span>
+                    </td>
+                    <td className="text-right">
+                      {a.status === 'Scheduled' && canBook && (
+                        <button className="btn-primary text-xs py-1.5" disabled={busyId === a.id} onClick={() => void start(a)}>
+                          {busyId === a.id ? <Loader2 size={12} className="animate-spin mr-1" /> : <CheckCircle2 size={12} className="mr-1" />}
+                          Start
+                        </button>
+                      )}
+                      {a.status === 'InProgress' && (
+                        <button className="btn-ghost text-xs py-1.5" onClick={() => navigate('/consultations')}>
+                          <Stethoscope size={12} className="mr-1" /> Open
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {showBook && canBook && (

@@ -18,6 +18,7 @@ export interface Appointment {
   scheduledAtUtc: string;
   durationMinutes: number;
   reason: string | null;
+  previousConsultationId: string | null;
   recurrenceGroupId: string | null;
   recurrencePattern: RecurrencePattern;
   createdByUserId: string;

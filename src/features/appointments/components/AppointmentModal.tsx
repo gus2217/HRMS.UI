@@ -9,13 +9,15 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, UserRound, CheckCircle2 } from 'lucide-react';
+import { Loader2, UserRound, CheckCircle2, History } from 'lucide-react';
 import { AppointmentService } from '../services/appointmentService';
 import { PatientService } from '@/features/patients/services/patientService';
+import { ConsultationService } from '@/features/consultations/services/consultationService';
+import type { ConsultationRecord } from '@/features/consultations/types/consultation';
 import type { PatientSummary } from '@/features/patients/types/patient';
 import type { Appointment } from '../types/appointment';
 import { CLINIC_TYPES } from '@/features/clinical/clinics';
-import { ageFromDateOfBirth } from '@/lib/format';
+import { ageFromDateOfBirth, formatDateTime } from '@/lib/format';
 
 interface Props {
   patient?: PatientSummary | null;
@@ -53,6 +55,8 @@ export default function AppointmentModal({ patient: presetPatient, onClose, onCr
   const [recurrence, setRecurrence] = useState('None');
   const [recurrenceCount, setRecurrenceCount] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [priorVisits, setPriorVisits] = useState<ConsultationRecord[]>([]);
+  const [previousConsultationId, setPreviousConsultationId] = useState<string>('');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -68,6 +72,23 @@ export default function AppointmentModal({ patient: presetPatient, onClose, onCr
     }, 350);
     return () => clearTimeout(timer);
   }, [query]);
+
+  // When a patient is selected and this is a follow-up/check-up, load their past
+  // consultations so the clinician can link the visit to the index consultation.
+  useEffect(() => {
+    if (!selected || !['FollowUp', 'CheckUp', 'Review'].includes(type)) {
+      setPriorVisits([]);
+      setPreviousConsultationId('');
+      return;
+    }
+    let mounted = true;
+    ConsultationService.medicalRecord(selected.id)
+      .then((rec) => {
+        if (mounted) setPriorVisits(rec.consultations.filter((c) => c.status === 'Completed'));
+      })
+      .catch(() => { if (mounted) setPriorVisits([]); });
+    return () => { mounted = false; };
+  }, [selected, type]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -89,6 +110,7 @@ export default function AppointmentModal({ patient: presetPatient, onClose, onCr
         scheduledAtUtc,
         durationMinutes,
         reason: reason.trim() || null,
+        previousConsultationId: previousConsultationId || null,
         recurrencePattern: recurrence,
         recurrenceCount: recurrence === 'None' ? 1 : recurrenceCount,
         recurrenceEndDate: null,
@@ -152,6 +174,32 @@ export default function AppointmentModal({ patient: presetPatient, onClose, onCr
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+          )}
+
+          {/* Follow-up linkage — for follow-up/check-up/review types */}
+          {selected && ['FollowUp', 'CheckUp', 'Review'].includes(type) && (
+            <div className="p-3 rounded-lg bg-violet-50 border border-violet-200">
+              <p className="text-xs font-semibold text-violet-700 flex items-center gap-1.5 mb-2">
+                <History size={12} /> Follow-up of
+              </p>
+              {priorVisits.length === 0 ? (
+                <p className="text-xs text-violet-500">No completed visits on record — this will be a standalone {type.toLowerCase()}.</p>
+              ) : (
+                <select
+                  className="input"
+                  value={previousConsultationId}
+                  onChange={(e) => setPreviousConsultationId(e.target.value)}
+                >
+                  <option value="">No prior visit (standalone)</option>
+                  {priorVisits.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {formatDateTime(c.startedAtUtc)}
+                      {c.diagnoses.length > 0 ? ` — ${c.diagnoses.map((d) => d.description).join(', ')}` : ''}
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
           )}
