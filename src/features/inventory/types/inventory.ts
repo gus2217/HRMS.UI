@@ -10,6 +10,7 @@ export interface DrugCatalogDto {
   unitPrice: number;
   reorderLevel: number;
   status: string;
+  availableQuantity: number;
 }
 
 export interface StockLevelDto {

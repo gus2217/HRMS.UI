@@ -40,7 +40,7 @@ import { InpatientService } from '@/features/inpatient/services/inpatientService
 import type { ConsultationDetail, ClinicalDocumentationDto, PatientMedicalRecord } from '../types/consultation';
 import type { PatientDetail } from '@/features/patients/types/patient';
 import type { DrugCatalogDto } from '@/features/inventory/types/inventory';
-import type { InvoiceListItem } from '@/features/billing/types/billing';
+import type { InvoiceDetail } from '@/features/billing/types/billing';
 import type { AdmissionDetail } from '@/features/inpatient/types/inpatient';
 import type { LabOrderDetail } from '@/features/laboratory/types/laboratory';
 import type { PrescriptionDetail } from '@/features/pharmacy/types/pharmacy';
@@ -1221,6 +1221,8 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
   const setLine = (index: number, patch: Partial<(typeof lines)[number]>) =>
     setLines((ls) => ls.map((l, i) => (i === index ? { ...l, ...patch } : l)));
 
+  const drugFor = (id: string) => drugs.find((d) => d.id === id);
+
   const submit = async () => {
     if (!consultation || !patientId) {
       toast.error('Start a consultation first.');
@@ -1230,6 +1232,16 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
     if (valid.length === 0) {
       toast.error('Add at least one drug line.');
       return;
+    }
+    // Client-side elite guard — the backend re-validates authoritatively.
+    for (const l of valid) {
+      const d = drugFor(l.drugId);
+      if (!d) { toast.error('A selected drug is no longer available.'); return; }
+      if (d.availableQuantity <= 0) { toast.error(`${d.name} is out of stock.`); return; }
+      if (l.quantityPrescribed > d.availableQuantity) {
+        toast.error(`Cannot prescribe ${l.quantityPrescribed} of ${d.name} — only ${d.availableQuantity} in stock.`);
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -1316,29 +1328,45 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
       ) : null}
 
       <div className="space-y-3">
-        {lines.map((line, index) => (
-          <div key={index} className="grid grid-cols-[1fr_1fr_70px] gap-2">
-            <select className="input" value={line.drugId} onChange={(e) => setLine(index, { drugId: e.target.value })}>
-              <option value="">Select drug…</option>
-              {drugs.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} ({d.code}) — {formatMoney(d.unitPrice)}</option>
-              ))}
-            </select>
-            <input
-              className="input"
-              placeholder="Dosage instructions"
-              value={line.dosageInstructions}
-              onChange={(e) => setLine(index, { dosageInstructions: e.target.value })}
-            />
-            <input
-              type="number"
-              min={1}
-              className="input"
-              value={line.quantityPrescribed}
-              onChange={(e) => setLine(index, { quantityPrescribed: Number(e.target.value) })}
-            />
-          </div>
-        ))}
+        {lines.map((line, index) => {
+          const selected = drugFor(line.drugId);
+          const overStock = selected && line.quantityPrescribed > selected.availableQuantity;
+          return (
+            <div key={index} className="space-y-1.5">
+              <div className="grid grid-cols-[1fr_1fr_70px] gap-2">
+                <select className="input" value={line.drugId} onChange={(e) => setLine(index, { drugId: e.target.value })}>
+                  <option value="">Select drug…</option>
+                  {drugs.map((d) => (
+                    <option key={d.id} value={d.id} disabled={d.availableQuantity <= 0}>
+                      {d.name} ({d.code}) — {formatMoney(d.unitPrice)}
+                      {d.availableQuantity <= 0 ? ' · out of stock' : ` · ${d.availableQuantity} in stock`}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input"
+                  placeholder="Dosage instructions"
+                  value={line.dosageInstructions}
+                  onChange={(e) => setLine(index, { dosageInstructions: e.target.value })}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={selected?.availableQuantity || undefined}
+                  className={`input ${overStock ? 'border-red-400 ring-1 ring-red-200' : ''}`}
+                  value={line.quantityPrescribed}
+                  onChange={(e) => setLine(index, { quantityPrescribed: Number(e.target.value) })}
+                />
+              </div>
+              {selected && (
+                <p className={`text-[11px] ${overStock ? 'text-red-600 font-medium' : 'text-slate-400'}`}>
+                  {selected.name} · {selected.availableQuantity} in stock
+                  {overStock ? ` — exceeds available stock by ${line.quantityPrescribed - selected.availableQuantity}` : ''}
+                </p>
+              )}
+            </div>
+          );
+        })}
         <button
           type="button"
           className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
@@ -1525,27 +1553,37 @@ function OrderTestsPanel({ consultation, patientId, patientName }: { consultatio
 // ─── Bill (auto-issued) ─────────────────────────────────────────────────────────
 
 function BillPanel({ consultationId, patientName }: { consultationId?: string; patientName?: string }) {
-  const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
+  const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
     if (!consultationId) {
-      setInvoices([]);
+      setInvoice(null);
       return;
     }
     setLoading(true);
     try {
-      const res = await BillingService.list(1, 10, undefined, consultationId);
-      setInvoices(res.items);
+      // The draft invoice is opened the moment the consultation starts; charges for
+      // meds and tests (even still pending) accumulate on it live via domain events.
+      const res = await BillingService.list(1, 5, undefined, consultationId);
+      const latest = res.items[0];
+      if (latest) {
+        setInvoice(await BillingService.detail(latest.id));
+      } else {
+        setInvoice(null);
+      }
     } catch {
-      setInvoices([]);
+      setInvoice(null);
     } finally {
       setLoading(false);
     }
   };
 
+  // Live refresh: the bill grows as the doctor prescribes and orders tests.
   useEffect(() => {
     void load();
+    const timer = setInterval(() => void load(), 8000);
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consultationId]);
 
@@ -1564,7 +1602,7 @@ function BillPanel({ consultationId, patientName }: { consultationId?: string; p
         <div>
           <p className="text-sm font-semibold text-slate-900">Bill</p>
           <p className="text-xs text-slate-400 mt-0.5">
-            {patientName ?? ''} — issued automatically from meds, tests & consultation. The cashier confirms payment.
+            {patientName ?? ''} — updates live from meds, tests & consultation. Cashier confirms payment.
           </p>
         </div>
         <button className="btn-ghost text-xs" onClick={() => void load()}>
@@ -1573,48 +1611,64 @@ function BillPanel({ consultationId, patientName }: { consultationId?: string; p
         </button>
       </div>
 
-      {loading ? (
+      {loading && !invoice ? (
         <div className="flex items-center justify-center gap-3 py-12">
           <Loader2 size={18} className="animate-spin text-indigo-600" />
           <p className="text-sm text-slate-400">Loading bill…</p>
         </div>
-      ) : invoices.length === 0 ? (
+      ) : !invoice || invoice.lines.length === 0 ? (
         <div className="text-center py-12">
           <Receipt size={28} className="text-slate-300 mx-auto mb-3" />
-          <p className="text-sm text-slate-400">No bill yet — prescribe meds, order tests, or complete the consultation to generate one.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {invoices.map((inv) => (
-            <div key={inv.id} className="p-4 rounded-lg bg-slate-50 border border-slate-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{inv.patientName}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(inv.createdAtUtc)}</p>
-                </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full border ${
-                  inv.status === 'Paid'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : inv.status === 'PartiallyPaid'
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : inv.status === 'Issued'
-                        ? 'bg-sky-50 text-sky-700 border-sky-200'
-                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                }`}>
-                  {inv.status}
-                </span>
-              </div>
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200">
-                <p className="text-xs text-slate-500">Total</p>
-                <p className="text-lg font-bold text-indigo-600">{formatMoney(inv.totalAmount)}</p>
-              </div>
-            </div>
-          ))}
-          <p className="text-[11px] text-slate-400 text-center">
-            Payments are confirmed by the cashier/receptionist in the Billing section.
+          <p className="text-sm text-slate-400">
+            No charges yet — the consultation fee appears once the visit starts, and meds/tests are added live as you order them.
           </p>
         </div>
+      ) : (
+        <div className="rounded-lg bg-white border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Draft bill</p>
+              <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(invoice.createdAtUtc)}</p>
+            </div>
+            <span className={`text-xs px-2.5 py-1 rounded-full border ${
+              invoice.status === 'Paid'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : invoice.status === 'PartiallyPaid'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : invoice.status === 'Issued'
+                    ? 'bg-sky-50 text-sky-700 border-sky-200'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+            }`}>
+              {invoice.status}
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <tbody>
+              {invoice.lines.map((l) => (
+                <tr key={l.id} className="border-b border-slate-100 last:border-b-0">
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium text-slate-800">{l.description}</p>
+                    <p className="text-[11px] text-slate-400 font-mono">{l.serviceCode}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap text-slate-500">
+                    {l.quantity} × {formatMoney(l.unitPrice)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap font-medium text-slate-800">
+                    {formatMoney(l.lineTotal)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex items-center justify-between px-4 py-3 bg-indigo-50/60 border-t border-indigo-100">
+            <p className="text-sm font-semibold text-slate-700">Total</p>
+            <p className="text-lg font-bold text-indigo-600">{formatMoney(invoice.totalAmount)}</p>
+          </div>
+        </div>
       )}
+      <p className="text-[11px] text-slate-400 text-center">
+        Payments are confirmed by the cashier/receptionist in the Billing section.
+      </p>
     </div>
   );
 }
