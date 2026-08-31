@@ -14,7 +14,7 @@ import { useAuth } from '@/features/auth/components/AuthContext';
 
 interface Props {
   onClose: () => void;
-  onStarted: (c: ConsultationDetail) => void;
+  onStarted: (c: ConsultationDetail, patient: PatientSummary) => void;
 }
 
 export default function StartConsultationModal({ onClose, onStarted }: Props) {
@@ -46,7 +46,7 @@ export default function StartConsultationModal({ onClose, onStarted }: Props) {
     try {
       const c = await ConsultationService.start(selected.id, user?.id ?? '');
       toast.success(`Consultation started for ${selected.fullName}`);
-      onStarted(c);
+      onStarted(c, selected);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to start consultation');
     } finally {

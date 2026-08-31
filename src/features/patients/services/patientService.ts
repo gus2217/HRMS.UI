@@ -31,9 +31,10 @@ export const PatientService = {
     return http.post<RegisterPatientResponse>('/patients', input);
   },
 
-  search(search?: string, pageNumber = 1, pageSize = 50): Promise<PagedResult<PatientSummary>> {
+  search(search?: string, pageNumber = 1, pageSize = 50, sort?: 'latest' | 'name'): Promise<PagedResult<PatientSummary>> {
     const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
     if (search) q.set('search', search);
+    if (sort) q.set('sort', sort);
     return http.get<PagedResult<PatientSummary>>(`/patients?${q.toString()}`);
   },
 

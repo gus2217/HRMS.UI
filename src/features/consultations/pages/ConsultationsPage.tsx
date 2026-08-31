@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, Plus, Stethoscope, Inbox } from 'lucide-react';
+import {
+  Loader2, Plus, Stethoscope, Inbox, ArrowLeft, UserRound, Phone, CalendarDays,
+} from 'lucide-react';
 import { ConsultationService } from '../services/consultationService';
+import { PatientService } from '@/features/patients/services/patientService';
 import type { ConsultationDetail, ConsultationListItem } from '../types/consultation';
-import { formatDateTime } from '@/lib/format';
+import type { PatientSummary } from '@/features/patients/types/patient';
+import { formatDateTime, ageFromDateOfBirth } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import StartConsultationModal from '../components/StartConsultationModal';
@@ -11,6 +15,14 @@ import ConsultationDetailView from '../components/ConsultationDetailView';
 
 interface ConsultationRow extends ConsultationListItem {
   detail?: ConsultationDetail;
+}
+
+interface Workspace {
+  patientId: string;
+  patientName: string;
+  patientNumber: string;
+  consultation: ConsultationDetail | null;
+  loading: boolean;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -26,12 +38,13 @@ const STATUS_STYLES: Record<string, string> = {
 export default function ConsultationsPage() {
   const { permissions } = useAuth();
   const [rows, setRows] = useState<ConsultationRow[]>([]);
+  const [latestPatients, setLatestPatients] = useState<PatientSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [showStart, setShowStart] = useState(false);
-  const [active, setActive] = useState<ConsultationRow | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [activeLoading, setActiveLoading] = useState(false);
 
   const canConsult = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
@@ -49,19 +62,58 @@ export default function ConsultationsPage() {
     }
   };
 
+  const loadLatestPatients = async () => {
+    try {
+      const res = await PatientService.search('', 1, 8, 'latest');
+      setLatestPatients(res.items);
+    } catch {
+      setLatestPatients([]);
+    }
+  };
+
   useEffect(() => {
     void load(page, status);
+    void loadLatestPatients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, status]);
 
+  /** Opens the full-screen workspace for a consultation row. */
   const openConsultation = async (row: ConsultationRow) => {
     setActiveLoading(true);
-    setActive(row);
+    setWorkspace({
+      patientId: row.patientId,
+      patientName: row.patientName,
+      patientNumber: row.patientNumber,
+      consultation: row.detail ?? null,
+      loading: !row.detail,
+    });
     try {
-      const detail = await ConsultationService.detail(row.id);
-      setActive({ ...row, detail });
+      const detail = row.detail ?? await ConsultationService.detail(row.id);
+      setWorkspace((w) => (w ? { ...w, consultation: detail, loading: false } : w));
     } catch {
-      setActive({ ...row, detail: undefined });
+      setWorkspace((w) => (w ? { ...w, loading: false } : w));
+    } finally {
+      setActiveLoading(false);
+    }
+  };
+
+  /** Opens the full-screen workspace for a patient (latest consultation if any). */
+  const openPatientWorkspace = async (patient: PatientSummary) => {
+    setActiveLoading(true);
+    setWorkspace({
+      patientId: patient.id,
+      patientName: patient.fullName,
+      patientNumber: patient.patientNumber,
+      consultation: null,
+      loading: true,
+    });
+    try {
+      const history = await ConsultationService.history(patient.id);
+      const latest = history.consultations[0] ?? null;
+      const consultation = latest ? await ConsultationService.detail(latest.id) : null;
+      setWorkspace((w) => (w ? { ...w, consultation, loading: false } : w));
+    } catch {
+      setWorkspace((w) => (w ? { ...w, loading: false } : w));
     } finally {
       setActiveLoading(false);
     }
@@ -72,6 +124,46 @@ export default function ConsultationsPage() {
     setPage(1);
   };
 
+  const closeWorkspace = () => {
+    setWorkspace(null);
+    void load(page, status);
+  };
+
+  /* ── Full-screen workspace: tabs render in full, no patient list ── */
+  if (workspace) {
+    return (
+      <div className="p-5 lg:p-8 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button className="btn-ghost text-xs" onClick={closeWorkspace} disabled={activeLoading}>
+            <ArrowLeft size={14} className="mr-1" />
+            Back to queue
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-sm font-semibold text-slate-900">{workspace.patientName}</p>
+              <p className="font-mono text-xs text-indigo-600">{workspace.patientNumber}</p>
+            </div>
+            <span className="w-10 h-10 rounded-full bg-indigo-600/10 text-indigo-700 flex items-center justify-center font-bold text-sm">
+              {workspace.patientName.slice(0, 2).toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        <ConsultationDetailView
+          consultation={workspace.consultation}
+          patientId={workspace.patientId}
+          patientName={workspace.patientName}
+          patientNumber={workspace.patientNumber}
+          onChanged={(updated) => {
+            setWorkspace((w) => (w ? { ...w, consultation: updated } : w));
+            void load(page, status);
+          }}
+        />
+      </div>
+    );
+  }
+
+  /* ── Default view: queue (left) + latest patients (right) ── */
   return (
     <div className="p-5 lg:p-8 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -95,9 +187,9 @@ export default function ConsultationsPage() {
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-3 gap-6">
         {/* Working queue */}
-        <div className="card overflow-hidden">
+        <div className="lg:col-span-2 card overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
             <Stethoscope size={15} className="text-indigo-600" />
             <h2 className="text-sm font-semibold text-slate-900">Consultation queue</h2>
@@ -164,39 +256,71 @@ export default function ConsultationsPage() {
           )}
         </div>
 
-        {/* Detail panel */}
-        <div className="card p-5 min-h-[300px]">
-          {activeLoading ? (
-            <div className="flex items-center justify-center gap-3 py-16">
-              <Loader2 size={20} className="animate-spin text-indigo-600" />
-              <p className="text-sm text-slate-400">Loading consultation…</p>
+        {/* Latest patients */}
+        <div className="card overflow-hidden h-fit">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
+            <UserRound size={15} className="text-indigo-600" />
+            <h2 className="text-sm font-semibold text-slate-900">Latest patients</h2>
+          </div>
+          {latestPatients.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+              <UserRound size={26} className="text-slate-300" />
+              <p className="text-xs text-slate-400 max-w-[200px]">No patients registered yet.</p>
             </div>
-          ) : active ? (
-            <ConsultationDetailView
-              consultation={active.detail ?? null}
-              patientId={active.patientId}
-              patientName={active.patientName}
-              patientNumber={active.patientNumber}
-              onChanged={(updated) => {
-                setActive((prev) => (prev ? { ...prev, detail: updated, status: updated.status } : prev));
-                void load(page, status);
-              }}
-            />
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <Stethoscope size={28} className="text-slate-300" />
-              <p className="text-sm text-slate-400 max-w-xs">Select a consultation to view or work it.</p>
-            </div>
+            <ul className="divide-y divide-slate-100">
+              {latestPatients.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                    onClick={() => void openPatientWorkspace(p)}
+                  >
+                    <span className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-semibold text-xs shrink-0">
+                      {p.fullName.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-900 truncate">{p.fullName}</span>
+                      <span className="block text-[11px] text-slate-400 mt-0.5">
+                        <span className="font-mono text-indigo-600">{p.patientNumber}</span>
+                        {p.dateOfBirth ? ` · ${ageFromDateOfBirth(p.dateOfBirth) ?? '—'} yrs` : ''}
+                      </span>
+                    </span>
+                    <span className="flex flex-col items-end gap-0.5 shrink-0">
+                      {p.phone && (
+                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                          <Phone size={10} /> {p.phone}
+                        </span>
+                      )}
+                      {p.lastVisitDate && (
+                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                          <CalendarDays size={10} /> {formatDateTime(p.lastVisitDate)}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
+          <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60">
+            <p className="text-[11px] text-slate-400">Most recently registered patients — click to open their record.</p>
+          </div>
         </div>
       </div>
 
       {showStart && (
         <StartConsultationModal
           onClose={() => setShowStart(false)}
-          onStarted={(c) => {
+          onStarted={(c, patient) => {
             setShowStart(false);
-            setActive({ ...c, patientName: c.patientId, patientNumber: '', detail: c });
+            setWorkspace({
+              patientId: c.patientId,
+              patientName: patient.fullName,
+              patientNumber: patient.patientNumber,
+              consultation: c,
+              loading: false,
+            });
             void load(page, status);
           }}
         />
@@ -217,5 +341,3 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
     </button>
   );
 }
-
-export { formatDateTime };

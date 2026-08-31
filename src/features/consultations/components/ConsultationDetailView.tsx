@@ -27,6 +27,7 @@ import {
   Loader2, Activity, ClipboardList, CheckCircle2, UserRound, Pill, TestTube2,
   Receipt, Stethoscope, ShieldAlert, FileText, Users, BedDouble, Send, Save, RefreshCw, ChevronDown,
 } from 'lucide-react';
+import Icd10Search from './Icd10Search';
 import { ConsultationService, type DocumentationInput, type ReferralInput } from '../services/consultationService';
 import { PharmacyService } from '@/features/pharmacy/services/pharmacyService';
 import { LaboratoryService } from '@/features/laboratory/services/laboratoryService';
@@ -34,13 +35,14 @@ import { PatientService } from '@/features/patients/services/patientService';
 import { InventoryService } from '@/features/inventory/services/inventoryService';
 import { BillingService } from '@/features/billing/services/billingService';
 import { InpatientService } from '@/features/inpatient/services/inpatientService';
-import type { ConsultationDetail, ClinicalDocumentationDto } from '../types/consultation';
+import type { ConsultationDetail, ClinicalDocumentationDto, PatientMedicalRecord } from '../types/consultation';
 import type { PatientDetail } from '@/features/patients/types/patient';
 import type { DrugCatalogDto } from '@/features/inventory/types/inventory';
 import type { InvoiceListItem } from '@/features/billing/types/billing';
 import type { AdmissionDetail } from '@/features/inpatient/types/inpatient';
 import type { LabOrderDetail } from '@/features/laboratory/types/laboratory';
 import type { PrescriptionDetail } from '@/features/pharmacy/types/pharmacy';
+import { MedicalRecordTimeline, type EnrichedVisit } from '@/features/patients/components/MedicalRecordTimeline';
 import { formatDate, formatDateTime, formatMoney, ageFromDateOfBirth } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
@@ -134,17 +136,46 @@ export default function ConsultationDetailView({ consultation, patientId, patien
 
 function MedicalRecordPanel({ patientId }: { patientId?: string; patientName?: string; patientNumber?: string }) {
   const [patient, setPatient] = useState<PatientDetail | null>(null);
+  const [record, setRecord] = useState<PatientMedicalRecord | null>(null);
+  const [visits, setVisits] = useState<EnrichedVisit[]>([]);
   const [loading, setLoading] = useState(patientId !== undefined);
 
   useEffect(() => {
     if (!patientId) return;
     let mounted = true;
     setLoading(true);
-    PatientService.detail(patientId)
-      .then((p) => { if (mounted) setPatient(p); })
-      .catch(() => toast.error('Failed to load patient record'))
-      .finally(() => { if (mounted) setLoading(false); });
-    return () => { mounted = false; };
+    const load = async () => {
+      try {
+        const [p, rec] = await Promise.all([
+          PatientService.detail(patientId),
+          ConsultationService.medicalRecord(patientId).catch(() => null),
+        ]);
+        if (!mounted) return;
+        setPatient(p);
+        setRecord(rec);
+
+        // Enrich each visit with lab results + prescriptions (same as the patients section).
+        const cons = rec?.consultations ?? [];
+        const enriched = await Promise.all(
+          cons.map(async (c) => {
+            const [labOrders, prescriptions] = await Promise.all([
+              LaboratoryService.byConsultation(c.id).catch(() => [] as LabOrderDetail[]),
+              PharmacyService.byConsultation(c.id).catch(() => [] as PrescriptionDetail[]),
+            ]);
+            return { ...c, labOrders, prescriptions };
+          }),
+        );
+        if (mounted) setVisits(enriched);
+      } catch {
+        toast.error('Failed to load patient record');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
   }, [patientId]);
 
   if (loading) {
@@ -258,74 +289,8 @@ function MedicalRecordPanel({ patientId }: { patientId?: string; patientName?: s
         </div>
       )}
 
-      {/* Clinical history */}
-      <ClinicalHistory patientId={patientId} />
-    </div>
-  );
-}
-
-function ClinicalHistory({ patientId }: { patientId?: string }) {
-  const [history, setHistory] = useState<{ consultations: { id: string; status: string; startedAtUtc: string }[]; diagnoses: { icdCode: string; description: string; isPrimary: boolean }[] } | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!patientId) return;
-    let mounted = true;
-    setLoading(true);
-    ConsultationService.history(patientId)
-      .then((h) => { if (mounted) setHistory(h); })
-      .catch(() => { /* no history */ })
-      .finally(() => { if (mounted) setLoading(false); });
-    return () => { mounted = false; };
-  }, [patientId]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
-        <Loader2 size={13} className="animate-spin" /> Loading clinical history…
-      </div>
-    );
-  }
-
-  const diagnoses = history?.diagnoses ?? [];
-  const consultations = history?.consultations ?? [];
-
-  return (
-    <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-        <Stethoscope size={12} /> Clinical history
-      </p>
-
-      {diagnoses.length > 0 && (
-        <div className="mb-3">
-          <p className="text-[11px] text-slate-400 font-medium mb-1.5">Past diagnoses</p>
-          <div className="space-y-1.5">
-            {diagnoses.map((d, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm">
-                <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0">{d.icdCode}</span>
-                <span className="text-slate-600">{d.description}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {consultations.length > 0 ? (
-        <div className="space-y-1.5">
-          <p className="text-[11px] text-slate-400 font-medium mb-1.5">Past consultations</p>
-          {consultations.map((c) => (
-            <div key={c.id} className="flex items-center justify-between text-sm">
-              <span className="text-slate-600">Consultation</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">{formatDateTime(c.startedAtUtc)}</span>
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">{c.status}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-slate-400">No consultations on record.</p>
-      )}
+      {/* Full per-visit medical record — same timeline as the patients section */}
+      <MedicalRecordTimeline record={record} visits={visits} />
     </div>
   );
 }
@@ -1658,11 +1623,34 @@ function DiagnosisForm({
   };
 
   return (
-    <form onSubmit={submit} className="space-y-2 pt-2">
+    <form onSubmit={submit} className="space-y-3 pt-2">
+      {/* ICD-10 typeahead — search disease by name or code */}
+      <Icd10Search
+        autoFocus
+        onSelect={(entry) => {
+          setIcdCode(entry.code);
+          setDescription(entry.name);
+        }}
+      />
+
+      {/* Selected / manual code + description */}
       <div className="flex gap-2">
-        <input className="input w-28" placeholder="ICD-10" value={icdCode} onChange={(e) => setIcdCode(e.target.value)} />
-        <input className="input" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input
+          className="input w-28 font-mono"
+          placeholder="ICD-10"
+          value={icdCode}
+          onChange={(e) => setIcdCode(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <input
+          className="input"
+          placeholder="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </div>
+
       <div className="flex items-center justify-between">
         <label className="flex items-center gap-2 text-xs text-slate-500">
           <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} />
