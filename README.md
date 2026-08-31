@@ -1,24 +1,25 @@
 # Jacana HRMS — Frontend (jacana-ui)
 
-Single-page application for the **Jacana HRMS** backend. Follows the Nivela App UI
-**folder structure and design patterns** (feature-folder architecture) with its own
-light theme. Wired to the real `/api/v1` bearer-token contracts.
+Single-page application for the **Jacana HRMS** backend. Follows a **feature-folder
+architecture** (self-contained `pages/` / `components/` / `services/` / `types/` per
+feature) with a clean light theme. Wired to the real `/api/v1` bearer-token contracts.
 
 ## Stack
 
 - **React 19** + **TypeScript** (strict) + **Vite 8**
 - **Tailwind CSS v4** (design tokens in `src/index.css`)
-- **react-router-dom v7** — `routes/index.tsx` AppRoutes, lazy-loaded pages
+- **react-router-dom v7** — `routes/index.tsx` `AppRoutes`, lazy-loaded pages, permission-guarded
 - **recharts** — dashboard/report charts
 - **react-hot-toast** — notifications
+- **zustand** — light client state
+- **@headlessui/react** — accessible primitives (modals, menus)
 
-## Folder structure (Nivela feature-folder pattern)
+## Folder structure (feature-folder pattern)
 
 ```
 src/
 ├── App.tsx                     # Lazy page map + Toaster
 ├── main.tsx                    # BrowserRouter + AuthProvider + App
-├── config.ts                   # window._env.API_BASE_URL (deploy-time override)
 ├── index.css                   # Light theme tokens (Tailwind v4)
 ├── lib/
 │   ├── apiClient.ts            # Shared transport: bearer + refresh + X-Auth-Mode
@@ -28,22 +29,43 @@ src/
 │   ├── index.tsx               # AppRoutes — every route, permission-guarded
 │   └── components/ProtectedRoute.tsx
 └── features/
-    ├── auth/                   # components (AuthContext, LoginForm) · pages (LoginPage) · services (authService) · types
-    ├── layout/                 # components (AppLayout — sidebar shell)
-    ├── dashboard/              # pages (DashboardPage) · services · types
-    ├── patients/               # pages (PatientsPage, Patient360Page) · components (RegisterPatientModal) · services · types
-    ├── consultations/          # pages (ConsultationsPage) · components (DetailView, StartModal) · services · types
-    ├── pharmacy/               # pages (PharmacyPage) · components (CreatePrescriptionModal) · services · types
-    ├── laboratory/             # pages (LaboratoryPage) · services · types
-    ├── billing/                # pages (BillingPage) · services · types
-    ├── inpatient/              # pages (WardsPage) · services · types
-    ├── inventory/              # pages (InventoryPage) · services · types
-    ├── reports/                # pages (ReportsPage) · services · types
-    └── audit/                  # pages (AuditPage) · services · types
+    ├── auth/                   # AuthContext, LoginForm · LoginPage · authService · types
+    ├── layout/                 # AppLayout (sidebar shell)
+    ├── dashboard/              # DashboardPage · services · types
+    ├── patients/               # PatientsPage, Patient360Page · RegisterPatientModal · MedicalRecordTimeline · services · types
+    ├── consultations/          # ConsultationsPage · ConsultationDetailView (full-screen workspace) · StartConsultationModal · Icd10Search · services · types
+    ├── queue/                  # QueuePage · QueuePatientModal · services · types
+    ├── appointments/           # AppointmentsPage · AppointmentModal · calendar/day-queue/requests components · services · types
+    ├── pharmacy/               # PharmacyPage · services · types
+    ├── laboratory/             # LaboratoryPage · services · types
+    ├── billing/                # BillingPage · services · types
+    ├── inpatient/              # WardsPage · services · types
+    ├── inventory/              # InventoryPage · services · types
+    ├── reports/                # ReportsPage · services · types
+    └── audit/                  # AuditPage · services · types
 ```
 
-Each feature owns its `pages/`, `components/`, `services/` and `types/` — the
-same shape as Nivela, so features are self-contained and portable.
+Each feature owns its `pages/`, `components/`, `services/` and `types/`, so features
+are self-contained and portable.
+
+## Routes
+
+| Path | Page | Permission |
+|---|---|---|
+| `/login` | Login | public |
+| `/` | Dashboard (or first permitted module) | `Identity.User.View` |
+| `/patients` | Patients list | `Patient.View` |
+| `/patients/:id` | Patient 360 | `Patient.View` |
+| `/consultations` | Consultations workspace | `Clinical.View` |
+| `/queue` | Consultation queue | `Queue.View` |
+| `/appointments` | Appointments | `Appointment.View` |
+| `/pharmacy` | Pharmacy | `Pharmacy.Dispense` |
+| `/lab` | Laboratory | `Laboratory.Order` |
+| `/billing` | Billing | `Billing.View` |
+| `/wards` | Inpatient wards | `Clinical.View` |
+| `/inventory` | Inventory | `Inventory.Receive` |
+| `/reports` | Reports | `Identity.User.View` |
+| `/audit` | Audit log | `Identity.User.View` |
 
 ## Getting started
 
@@ -80,6 +102,14 @@ Matches the backend's **bearer** scheme (not cookies):
 |---|---|
 | `admin@stfrancis.local` | Administrator |
 | `doctor@stfrancis.local` | Doctor |
+| `nurse@stfrancis.local` | Nurse |
+| `reception@stfrancis.local` | Receptionist |
+| `lab@stfrancis.local` | Lab Technician |
 | `pharmacist@stfrancis.local` | Pharmacist |
+| `storekeeper@stfrancis.local` | Storekeeper |
+| `accountant@stfrancis.local` | Accountant |
+| `cashier@stfrancis.local` | Cashier |
+| `records@stfrancis.local` | Records Officer |
+| `itsupport@stfrancis.local` | IT Support |
 
 Password for all seeded users: `ChangeMe123!` — change before any real deployment.
