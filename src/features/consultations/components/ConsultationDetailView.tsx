@@ -1190,7 +1190,8 @@ function ReferralPanel({
 
 function PrescribePanel({ consultation, patientId, patientName }: { consultation: ConsultationDetail | null; patientId?: string; patientName?: string }) {
   const [drugs, setDrugs] = useState<DrugCatalogDto[]>([]);
-  const [lines, setLines] = useState([{ drugId: '', dosageInstructions: '', quantityPrescribed: 1 }]);
+  const [reservations, setReservations] = useState<Record<string, number>>({});
+  const [lines, setLines] = useState([{ drugId: '', dosageInstructions: '', route: 'Oral', frequency: '', durationDays: '', quantityPrescribed: 1 }]);
   const [saving, setSaving] = useState(false);
   const [prescriptions, setPrescriptions] = useState<PrescriptionDetail[]>([]);
   const [loadingRx, setLoadingRx] = useState(false);
@@ -1216,12 +1217,17 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
     InventoryService.catalog()
       .then((res) => setDrugs(res.items))
       .catch(() => toast.error('Failed to load drug catalog'));
+    PharmacyService.reservations()
+      .then((rows) => setReservations(Object.fromEntries(rows.map((r) => [r.drugId, r.reservedQuantity]))))
+      .catch(() => setReservations({}));
   }, []);
 
   const setLine = (index: number, patch: Partial<(typeof lines)[number]>) =>
     setLines((ls) => ls.map((l, i) => (i === index ? { ...l, ...patch } : l)));
 
   const drugFor = (id: string) => drugs.find((d) => d.id === id);
+  // Effective stock a doctor may still prescribe = physical − already reserved.
+  const effectiveFor = (d: DrugCatalogDto) => Math.max(0, d.availableQuantity - (reservations[d.id] ?? 0));
 
   const submit = async () => {
     if (!consultation || !patientId) {
@@ -1237,9 +1243,10 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
     for (const l of valid) {
       const d = drugFor(l.drugId);
       if (!d) { toast.error('A selected drug is no longer available.'); return; }
-      if (d.availableQuantity <= 0) { toast.error(`${d.name} is out of stock.`); return; }
-      if (l.quantityPrescribed > d.availableQuantity) {
-        toast.error(`Cannot prescribe ${l.quantityPrescribed} of ${d.name} — only ${d.availableQuantity} in stock.`);
+      const effective = effectiveFor(d);
+      if (effective <= 0) { toast.error(`${d.name} is out of stock (or fully reserved).`); return; }
+      if (l.quantityPrescribed > effective) {
+        toast.error(`Cannot prescribe ${l.quantityPrescribed} of ${d.name} — only ${effective} available after pending prescriptions.`);
         return;
       }
     }
@@ -1251,12 +1258,19 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
         items: valid.map((l) => ({
           drugId: l.drugId,
           dosageInstructions: l.dosageInstructions || 'As directed',
+          route: l.route || 'Oral',
+          frequency: l.frequency || '',
+          durationDays: l.durationDays ? Number(l.durationDays) : null,
           quantityPrescribed: l.quantityPrescribed,
         })),
       });
       toast.success('Prescription created — added to the bill');
-      setLines([{ drugId: '', dosageInstructions: '', quantityPrescribed: 1 }]);
+      setLines([{ drugId: '', dosageInstructions: '', route: 'Oral', frequency: '', durationDays: '', quantityPrescribed: 1 }]);
       await loadPrescriptions();
+      // Refresh reservations so the effective stock reflects this prescription.
+      PharmacyService.reservations()
+        .then((rows) => setReservations(Object.fromEntries(rows.map((r) => [r.drugId, r.reservedQuantity]))))
+        .catch(() => {});
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create prescription');
     } finally {
@@ -1312,8 +1326,16 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
                 {rx.items.map((item) => (
                   <li key={item.id} className="flex items-start justify-between gap-3 text-sm">
                     <div className="min-w-0">
-                      <p className="text-slate-700">{drugLabel(item.drugId, drugs)}</p>
-                      <p className="text-xs text-slate-400">{item.dosageInstructions}</p>
+                      <p className="text-slate-700">
+                        {item.drugName || drugLabel(item.drugId, drugs)}
+                        {item.drugCategory ? <span className="text-xs text-slate-400"> · {item.drugCategory}</span> : null}
+                        {item.route ? <span className="text-xs text-slate-400"> · {item.route}</span> : null}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {item.dosageInstructions}
+                        {item.frequency ? ` · ${item.frequency}` : ''}
+                        {item.durationDays ? ` · ${item.durationDays} days` : ''}
+                      </p>
                     </div>
                     <span className="text-xs shrink-0">
                       <span className="font-medium text-slate-600">{item.quantityDispensed}/{item.quantityPrescribed}</span>
@@ -1330,38 +1352,72 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
       <div className="space-y-3">
         {lines.map((line, index) => {
           const selected = drugFor(line.drugId);
-          const overStock = selected && line.quantityPrescribed > selected.availableQuantity;
+          const effective = selected ? effectiveFor(selected) : 0;
+          const reserved = selected ? (reservations[selected.id] ?? 0) : 0;
+          const overStock = selected && line.quantityPrescribed > effective;
           return (
             <div key={index} className="space-y-1.5">
               <div className="grid grid-cols-[1fr_1fr_70px] gap-2">
                 <select className="input" value={line.drugId} onChange={(e) => setLine(index, { drugId: e.target.value })}>
                   <option value="">Select drug…</option>
-                  {drugs.map((d) => (
-                    <option key={d.id} value={d.id} disabled={d.availableQuantity <= 0}>
-                      {d.name} ({d.code}) — {formatMoney(d.unitPrice)}
-                      {d.availableQuantity <= 0 ? ' · out of stock' : ` · ${d.availableQuantity} in stock`}
-                    </option>
-                  ))}
+                  {drugs.map((d) => {
+                    const eff = effectiveFor(d);
+                    return (
+                      <option key={d.id} value={d.id} disabled={eff <= 0}>
+                        {d.name} ({d.code}) · {d.category} · {d.form} — {formatMoney(d.unitPrice)}
+                        {eff <= 0 ? ' · out of stock' : ` · ${eff} available`}
+                      </option>
+                    );
+                  })}
                 </select>
                 <input
                   className="input"
-                  placeholder="Dosage instructions"
+                  placeholder="Dosage instructions (e.g. Take 2 tablets)"
                   value={line.dosageInstructions}
                   onChange={(e) => setLine(index, { dosageInstructions: e.target.value })}
                 />
                 <input
                   type="number"
                   min={1}
-                  max={selected?.availableQuantity || undefined}
+                  max={selected ? effective || undefined : undefined}
                   className={`input ${overStock ? 'border-red-400 ring-1 ring-red-200' : ''}`}
                   value={line.quantityPrescribed}
                   onChange={(e) => setLine(index, { quantityPrescribed: Number(e.target.value) })}
                 />
               </div>
+              <div className="grid grid-cols-3 gap-2">
+                <select className="input text-xs py-1.5" value={line.route} onChange={(e) => setLine(index, { route: e.target.value })}>
+                  <option>Oral</option>
+                  <option>IV</option>
+                  <option>IM</option>
+                  <option>Subcutaneous</option>
+                  <option>Topical</option>
+                  <option>Inhalation</option>
+                  <option>Ophthalmic</option>
+                  <option>Otic</option>
+                  <option>Rectal</option>
+                  <option>Vaginal</option>
+                </select>
+                <input
+                  className="input text-xs py-1.5"
+                  placeholder="Frequency (e.g. Twice daily)"
+                  value={line.frequency}
+                  onChange={(e) => setLine(index, { frequency: e.target.value })}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  className="input text-xs py-1.5"
+                  placeholder="Duration (days)"
+                  value={line.durationDays}
+                  onChange={(e) => setLine(index, { durationDays: e.target.value })}
+                />
+              </div>
               {selected && (
                 <p className={`text-[11px] ${overStock ? 'text-red-600 font-medium' : 'text-slate-400'}`}>
-                  {selected.name} · {selected.availableQuantity} in stock
-                  {overStock ? ` — exceeds available stock by ${line.quantityPrescribed - selected.availableQuantity}` : ''}
+                  {selected.name} ({selected.category} · {selected.form}) · {effective} available to prescribe
+                  {reserved > 0 ? ` · ${reserved} reserved by pending prescriptions` : ''}
+                  {overStock ? ` — exceeds by ${line.quantityPrescribed - effective}` : ''}
                 </p>
               )}
             </div>
@@ -1370,7 +1426,7 @@ function PrescribePanel({ consultation, patientId, patientName }: { consultation
         <button
           type="button"
           className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
-          onClick={() => setLines((ls) => [...ls, { drugId: '', dosageInstructions: '', quantityPrescribed: 1 }])}
+          onClick={() => setLines((ls) => [...ls, { drugId: '', dosageInstructions: '', route: 'Oral', frequency: '', durationDays: '', quantityPrescribed: 1 }])}
         >
           + Add line
         </button>
@@ -1653,8 +1709,15 @@ function BillPanel({ consultationId, patientName }: { consultationId?: string; p
                   <td className="px-4 py-2.5 text-right whitespace-nowrap text-slate-500">
                     {l.quantity} × {formatMoney(l.unitPrice)}
                   </td>
-                  <td className="px-4 py-2.5 text-right whitespace-nowrap font-medium text-slate-800">
-                    {formatMoney(l.lineTotal)}
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <p className="font-medium text-slate-800">{formatMoney(l.lineTotal)}</p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      l.status === 'Charged'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {l.status === 'Charged' ? 'Charged' : 'Drafted'}
+                    </span>
                   </td>
                 </tr>
               ))}

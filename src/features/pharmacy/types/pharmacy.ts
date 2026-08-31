@@ -5,7 +5,13 @@
 export interface PrescriptionItemDto {
   id: string;
   drugId: string;
+  drugName: string;
+  drugCategory: string;
+  drugForm: string;
   dosageInstructions: string;
+  route: string;
+  frequency: string;
+  durationDays: number | null;
   quantityPrescribed: number;
   quantityDispensed: number;
   status: string;

@@ -9,6 +9,7 @@ export interface InvoiceLineDto {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  status: string;
 }
 
 export interface InvoiceDetail {

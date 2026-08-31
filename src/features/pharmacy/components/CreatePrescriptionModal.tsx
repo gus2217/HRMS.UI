@@ -27,6 +27,9 @@ interface Props {
 interface Line {
   drugId: string;
   dosageInstructions: string;
+  route: string;
+  frequency: string;
+  durationDays: string;
   quantityPrescribed: number;
 }
 
@@ -37,7 +40,7 @@ export default function CreatePrescriptionModal({ drugs, onClose, onCreated }: P
   const [consultationId, setConsultationId] = useState<string | null>(null);
   const [consultationStatus, setConsultationStatus] = useState('');
   const [resolving, setResolving] = useState(false);
-  const [lines, setLines] = useState<Line[]>([{ drugId: '', dosageInstructions: '', quantityPrescribed: 1 }]);
+  const [lines, setLines] = useState<Line[]>([{ drugId: '', dosageInstructions: '', route: 'Oral', frequency: '', durationDays: '', quantityPrescribed: 1 }]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -110,6 +113,9 @@ export default function CreatePrescriptionModal({ drugs, onClose, onCreated }: P
         items: validLines.map((l) => ({
           drugId: l.drugId,
           dosageInstructions: l.dosageInstructions || 'As directed',
+          route: l.route || 'Oral',
+          frequency: l.frequency || '',
+          durationDays: l.durationDays ? Number(l.durationDays) : null,
           quantityPrescribed: l.quantityPrescribed,
         })),
       });
@@ -179,32 +185,53 @@ export default function CreatePrescriptionModal({ drugs, onClose, onCreated }: P
           <div className="space-y-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Drug lines</p>
             {lines.map((line, index) => (
-              <div key={index} className="grid grid-cols-[1fr_1fr_70px] gap-2">
-                <select className="input" value={line.drugId} onChange={(e) => setLine(index, { drugId: e.target.value })}>
-                  <option value="">Select drug…</option>
-                  {drugs.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
-                  ))}
-                </select>
-                <input
-                  className="input"
-                  placeholder="Dosage instructions"
-                  value={line.dosageInstructions}
-                  onChange={(e) => setLine(index, { dosageInstructions: e.target.value })}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  className="input"
-                  value={line.quantityPrescribed}
-                  onChange={(e) => setLine(index, { quantityPrescribed: Number(e.target.value) })}
-                />
+              <div key={index} className="space-y-1.5">
+                <div className="grid grid-cols-[1fr_1fr_70px] gap-2">
+                  <select className="input" value={line.drugId} onChange={(e) => setLine(index, { drugId: e.target.value })}>
+                    <option value="">Select drug…</option>
+                    {drugs.map((d) => (
+                      <option key={d.id} value={d.id} disabled={d.availableQuantity <= 0}>
+                        {d.name} ({d.code}) · {d.category} · {d.form}
+                        {d.availableQuantity <= 0 ? ' · out of stock' : ` · ${d.availableQuantity} available`}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="input"
+                    placeholder="Dosage instructions"
+                    value={line.dosageInstructions}
+                    onChange={(e) => setLine(index, { dosageInstructions: e.target.value })}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    className="input"
+                    value={line.quantityPrescribed}
+                    onChange={(e) => setLine(index, { quantityPrescribed: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <select className="input text-xs py-1.5" value={line.route} onChange={(e) => setLine(index, { route: e.target.value })}>
+                    <option>Oral</option>
+                    <option>IV</option>
+                    <option>IM</option>
+                    <option>Subcutaneous</option>
+                    <option>Topical</option>
+                    <option>Inhalation</option>
+                    <option>Ophthalmic</option>
+                    <option>Otic</option>
+                    <option>Rectal</option>
+                    <option>Vaginal</option>
+                  </select>
+                  <input className="input text-xs py-1.5" placeholder="Frequency (e.g. Twice daily)" value={line.frequency} onChange={(e) => setLine(index, { frequency: e.target.value })} />
+                  <input type="number" min={1} className="input text-xs py-1.5" placeholder="Duration (days)" value={line.durationDays} onChange={(e) => setLine(index, { durationDays: e.target.value })} />
+                </div>
               </div>
             ))}
             <button
               type="button"
               className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
-              onClick={() => setLines((ls) => [...ls, { drugId: '', dosageInstructions: '', quantityPrescribed: 1 }])}
+              onClick={() => setLines((ls) => [...ls, { drugId: '', dosageInstructions: '', route: 'Oral', frequency: '', durationDays: '', quantityPrescribed: 1 }])}
             >
               + Add line
             </button>

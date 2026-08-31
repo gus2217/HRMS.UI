@@ -9,6 +9,9 @@ import type { PrescriptionDetail, PrescriptionListItem } from '../types/pharmacy
 export interface PrescriptionItemInput {
   drugId: string;
   dosageInstructions: string;
+  route: string;
+  frequency: string;
+  durationDays?: number | null;
   quantityPrescribed: number;
 }
 
@@ -16,6 +19,11 @@ export interface CreatePrescriptionInput {
   patientId: string;
   consultationId: string;
   items: PrescriptionItemInput[];
+}
+
+export interface DrugReservation {
+  drugId: string;
+  reservedQuantity: number;
 }
 
 export const PharmacyService = {
@@ -30,6 +38,11 @@ export const PharmacyService = {
   /** All prescriptions for a consultation, with items + dispense status. */
   byConsultation(consultationId: string): Promise<PrescriptionDetail[]> {
     return http.get<PrescriptionDetail[]>(`/pharmacy/consultations/${consultationId}/prescriptions`);
+  },
+
+  /** Reserved (pending) quantity per drug, for the prescribing UI. */
+  reservations(): Promise<DrugReservation[]> {
+    return http.get<DrugReservation[]>('/pharmacy/reservations');
   },
 
   dispense(input: { prescriptionId: string; prescriptionItemId: string; quantity: number }): Promise<{

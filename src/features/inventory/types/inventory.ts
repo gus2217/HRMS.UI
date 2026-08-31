@@ -6,6 +6,7 @@ export interface DrugCatalogDto {
   id: string;
   code: string;
   name: string;
+  category: string;
   form: string;
   unitPrice: number;
   reorderLevel: number;

@@ -177,8 +177,16 @@ export default function PharmacyPage() {
                     <div key={item.id} className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-sm">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-medium text-slate-900">{item.dosageInstructions}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-slate-900">{item.drugName}</p>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{item.drugCategory}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">{item.drugForm}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{item.route}</span>
+                          </div>
+                          <p className="text-slate-700 mt-1">{item.dosageInstructions}</p>
                           <p className="text-xs text-slate-400 mt-0.5">
+                            {item.frequency && `${item.frequency} · `}
+                            {item.durationDays ? `for ${item.durationDays} days · ` : ''}
                             {item.quantityDispensed}/{item.quantityPrescribed} dispensed · {item.status}
                           </p>
                         </div>
