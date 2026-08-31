@@ -68,7 +68,7 @@ export default function AuditPage() {
                 <tr>
                   <th>Action</th>
                   <th>Entity</th>
-                  <th>Entity ID</th>
+                  <th>Subject</th>
                   <th>Performed by</th>
                   <th>When</th>
                   <th></th>
@@ -118,8 +118,10 @@ function AuditRow({ entry, expanded, onToggle }: { entry: AuditLogEntryDto; expa
           </span>
         </td>
         <td className="text-slate-600">{entry.entityType}</td>
-        <td className="font-mono text-xs text-slate-400">{entry.entityId.slice(0, 8)}…</td>
-        <td className="text-slate-500">{entry.performedByUserId.slice(0, 8)}…</td>
+        <td className="font-mono text-xs text-slate-400">
+          {entry.entityName ?? entry.entityId.slice(0, 8) + '…'}
+        </td>
+        <td className="text-slate-500">{entry.performedByName ?? entry.performedByUserId.slice(0, 8) + '…'}</td>
         <td className="text-slate-500">{formatDateTime(entry.performedAtUtc)}</td>
         <td className="text-right text-slate-300">{hasDiff ? '▾' : ''}</td>
       </tr>

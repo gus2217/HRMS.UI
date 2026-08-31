@@ -224,7 +224,7 @@ export default function ReportsPage() {
                     <ResponsiveContainer width="100%" height={320}>
                       <BarChart data={workload}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="clinicianUserId" stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                        <XAxis dataKey="clinicianName" stroke="#94a3b8" tick={{ fontSize: 11 }} />
                         <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} allowDecimals={false} />
                         <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#f1f5f9' }} />
                         <Bar dataKey="consultationCount" fill="#a78bfa" radius={[4, 4, 0, 0]} />

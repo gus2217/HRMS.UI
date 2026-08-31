@@ -28,5 +28,6 @@ export interface ShaClaimStatusReport {
 
 export interface ClinicianWorkloadReport {
   clinicianUserId: string;
+  clinicianName: string;
   consultationCount: number;
 }
