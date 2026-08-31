@@ -56,6 +56,7 @@ export interface DuplicateCandidate {
   patientNumber: string;
   fullName: string;
   dateOfBirth: string;
+  phone: string | null;
   nationalId: string | null;
 }
 

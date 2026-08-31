@@ -1,15 +1,19 @@
 // ============================================================
 // RegisterPatientModal.tsx
 // Location: src/features/patients/components/RegisterPatientModal.tsx
+//
+// Front-desk registration with duplicate prevention:
+//   • Live pre-check — as soon as a phone or National ID is entered,
+//     the system queries existing patients (exact phone / ID match)
+//     and warns the receptionist BEFORE the form is submitted.
+//   • On submit, the backend re-checks and returns 409 with candidates
+//     when a duplicate is found; the modal blocks and lets the desk
+//     open the existing record or override deliberately.
 // ============================================================
-// Phase 1: front-desk registration is intentionally light.
-// - No marital status / next of kin (confidential — clinicians fill later).
-// - Insurance section: SHA / Other insurer / Private (self-pay).
-// - Clinic type: where the patient wants to be seen.
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { PatientService } from '../services/patientService';
 import type { RegisterPatientResponse, DuplicateCandidate } from '../types/patient';
 import { formatDate } from '@/lib/format';
@@ -72,9 +76,46 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
   });
   const [saving, setSaving] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
+  const [precheck, setPrecheck] = useState<DuplicateCandidate[]>([]);
+  const [prechecking, setPrechecking] = useState(false);
+  const [override, setOverride] = useState(false);
+  const precheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((f) => ({ ...f, [key]: e.target.value }));
+    if (key === 'phone' || key === 'nationalId') schedulePrecheck();
+  };
+
+  /** Debounced live duplicate check on phone / National ID entry. */
+  const schedulePrecheck = () => {
+    if (precheckTimer.current) clearTimeout(precheckTimer.current);
+    precheckTimer.current = setTimeout(() => void runPrecheck(), 600);
+  };
+
+  const runPrecheck = async () => {
+    const phone = form.phone.trim();
+    const nationalId = form.nationalId.trim();
+    if (!phone && !nationalId) {
+      setPrecheck([]);
+      return;
+    }
+    setPrechecking(true);
+    try {
+      const matches = await PatientService.checkDuplicates(phone || undefined, nationalId || undefined);
+      setPrecheck(matches);
+      if (matches.length > 0) setOverride(false); // new duplicate → require fresh decision
+    } catch {
+      setPrecheck([]);
+    } finally {
+      setPrechecking(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (precheckTimer.current) clearTimeout(precheckTimer.current);
+    };
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -105,7 +146,7 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
       });
       setDuplicates(res.duplicateCandidates ?? []);
       if (res.duplicateCandidates && res.duplicateCandidates.length > 0) {
-        toast.error('Possible duplicates found — review before continuing.');
+        toast.error('Possible duplicate found — the record was NOT created. Review before continuing.');
         return;
       }
       toast.success(`Registered ${res.patientNumber}`);
@@ -117,6 +158,12 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
     }
   };
 
+  const openExisting = (id: string) => {
+    window.location.href = `/patients/${id}`;
+  };
+
+  const showBlock = duplicates.length > 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="card w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -125,17 +172,66 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
         </div>
 
-        {duplicates.length > 0 && (
-          <div className="mx-5 mt-4 p-4 rounded-lg border border-amber-200 bg-amber-50">
-            <p className="text-sm font-semibold text-amber-700 mb-2">Possible duplicate records:</p>
+        {/* Live pre-check warning (before submit) */}
+        {!showBlock && precheck.length > 0 && (
+          <div className="mx-5 mt-4 p-3.5 rounded-lg border border-amber-200 bg-amber-50">
+            <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5 mb-1.5">
+              <AlertTriangle size={13} /> Phone / ID matches an existing patient
+            </p>
             <ul className="space-y-1 text-xs text-slate-600">
-              {duplicates.map((d) => (
-                <li key={d.id}>
-                  {d.fullName} · {d.patientNumber} · {formatDate(d.dateOfBirth)}
+              {precheck.map((d) => (
+                <li key={d.id} className="flex items-center justify-between gap-2">
+                  <span>
+                    {d.fullName} · {d.patientNumber}
+                    {d.phone ? ` · ${d.phone}` : ''}
+                  </span>
+                  <button className="text-indigo-600 hover:text-indigo-700 font-medium shrink-0 inline-flex items-center gap-1" onClick={() => openExisting(d.id)}>
+                    View record <ExternalLink size={11} />
+                  </button>
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-slate-500 mt-2">The record was created, but verify against the candidates above.</p>
+            <p className="text-[11px] text-amber-700 mt-1.5">
+              Check the existing record first — registering a duplicate is blocked on submit unless you confirm override.
+            </p>
+          </div>
+        )}
+
+        {/* Backend-confirmed duplicate block (after submit) */}
+        {showBlock && (
+          <div className="mx-5 mt-4 p-4 rounded-lg border border-red-200 bg-red-50">
+            <p className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1.5">
+              <AlertTriangle size={15} /> Duplicate record detected — registration blocked
+            </p>
+            <ul className="space-y-1.5 text-xs text-slate-700">
+              {duplicates.map((d) => (
+                <li key={d.id} className="flex items-center justify-between gap-2">
+                  <span>
+                    {d.fullName} · {d.patientNumber} · {formatDate(d.dateOfBirth)}
+                    {d.phone ? ` · ${d.phone}` : ''}
+                  </span>
+                  <button className="text-indigo-600 hover:text-indigo-700 font-medium shrink-0 inline-flex items-center gap-1" onClick={() => openExisting(d.id)}>
+                    Open existing <ExternalLink size={11} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <label className="flex items-start gap-2 mt-3 text-[11px] text-slate-600 cursor-pointer">
+              <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} className="mt-0.5 accent-red-600" />
+              I have verified the record above — this is a genuinely different patient. Register anyway.
+            </label>
+            <button
+              className="btn-primary w-full mt-2.5 text-xs py-2"
+              disabled={!override}
+              onClick={() => {
+                setDuplicates([]);
+                setOverride(false);
+                void handleSubmit({ preventDefault: () => {} } as FormEvent);
+              }}
+            >
+              {saving && <Loader2 size={13} className="animate-spin" />}
+              Register anyway
+            </button>
           </div>
         )}
 
@@ -151,7 +247,12 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
                 {GENDERS.map((g) => <option key={g}>{g}</option>)}
               </select>
             </Field>
-            <Field label="Phone *"><input className="input" placeholder="+2547…" value={form.phone} onChange={set('phone')} /></Field>
+            <Field label="Phone *">
+              <div className="relative">
+                <input className="input" placeholder="+2547…" value={form.phone} onChange={set('phone')} />
+                {prechecking && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
+              </div>
+            </Field>
             <Field label="National ID"><input className="input" value={form.nationalId} onChange={set('nationalId')} /></Field>
             <Field label="Clinic *">
               <select className="input" value={form.clinicType} onChange={set('clinicType')}>

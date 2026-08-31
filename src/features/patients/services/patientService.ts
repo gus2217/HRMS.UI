@@ -8,6 +8,7 @@ import type {
   PatientDetail,
   PatientSummary,
   RegisterPatientResponse,
+  DuplicateCandidate,
 } from '../types/patient';
 
 export interface RegisterPatientInput {
@@ -36,6 +37,14 @@ export const PatientService = {
     if (search) q.set('search', search);
     if (sort) q.set('sort', sort);
     return http.get<PagedResult<PatientSummary>>(`/patients?${q.toString()}`);
+  },
+
+  /** Pre-registration duplicate check by phone and/or NationalId. */
+  checkDuplicates(phone?: string, nationalId?: string): Promise<DuplicateCandidate[]> {
+    const q = new URLSearchParams();
+    if (phone) q.set('phone', phone);
+    if (nationalId) q.set('nationalId', nationalId);
+    return http.get<DuplicateCandidate[]>(`/patients/check?${q.toString()}`);
   },
 
   detail(id: string): Promise<PatientDetail> {

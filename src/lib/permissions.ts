@@ -31,6 +31,9 @@ export const PERMISSIONS = {
   IDENTITY_USER_SUSPEND: 'Identity.User.Suspend',
   IDENTITY_ROLE_VIEW: 'Identity.Role.View',
   IDENTITY_ROLE_MANAGE: 'Identity.Role.Manage',
+  QUEUE_CREATE: 'Queue.Create',
+  QUEUE_VIEW: 'Queue.View',
+  QUEUE_ACCEPT: 'Queue.Accept',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -60,6 +63,8 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.CLINICAL_RECORD_DIAGNOSIS,
     PERMISSIONS.LABORATORY_ORDER,
     PERMISSIONS.PHARMACY_DISPENSE,
+    PERMISSIONS.QUEUE_VIEW,
+    PERMISSIONS.QUEUE_ACCEPT,
   ],
   Nurse: [
     PERMISSIONS.PATIENT_VIEW,
@@ -68,6 +73,8 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.CLINICAL_VIEW,
     PERMISSIONS.CLINICAL_CONSULT, // triage, begin phase, clinical notes (backend grant)
     PERMISSIONS.LABORATORY_ORDER,
+    PERMISSIONS.QUEUE_VIEW,
+    PERMISSIONS.QUEUE_ACCEPT,
   ],
   Receptionist: [
     PERMISSIONS.PATIENT_VIEW,
@@ -76,6 +83,8 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.PATIENT_CONFIDENTIAL_VIEW,
     PERMISSIONS.BILLING_VIEW,
     PERMISSIONS.BILLING_ISSUE_INVOICE,
+    PERMISSIONS.QUEUE_CREATE,
+    PERMISSIONS.QUEUE_VIEW,
   ],
   LabTechnician: [
     PERMISSIONS.PATIENT_VIEW,

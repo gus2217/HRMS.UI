@@ -47,6 +47,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={17} />, permission: PERMISSIONS.IDENTITY_USER_VIEW, end: true },
   { to: '/patients', label: 'Patients', icon: <Users size={17} />, permission: PERMISSIONS.PATIENT_VIEW },
   { to: '/consultations', label: 'Consultations', icon: <Stethoscope size={17} />, permission: PERMISSIONS.CLINICAL_VIEW },
+  { to: '/queue', label: 'Queue', icon: <Users size={17} />, permission: PERMISSIONS.QUEUE_VIEW },
   { to: '/pharmacy', label: 'Pharmacy', icon: <Pill size={17} />, permission: PERMISSIONS.PHARMACY_DISPENSE },
   { to: '/lab', label: 'Laboratory', icon: <FlaskConical size={17} />, permission: PERMISSIONS.LABORATORY_ORDER },
   { to: '/billing', label: 'Billing', icon: <Receipt size={17} />, permission: PERMISSIONS.BILLING_VIEW },
