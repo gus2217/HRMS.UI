@@ -9,8 +9,15 @@ export type NotificationCategory =
   | 'PrescriptionInitiated'
   | 'PatientAdmitted'
   | 'PatientDischarged'
+  | 'PatientTransferred'
   | 'ReferralCreated'
   | 'System';
+
+export interface NotificationPreferenceDto {
+  category: NotificationCategory;
+  inAppEnabled: boolean;
+  smsEnabled: boolean;
+}
 
 export interface UserNotificationDto {
   id: string;

@@ -4,7 +4,7 @@
 // ============================================================
 
 import { http, type PagedResult } from '@/lib/apiClient';
-import type { UserNotificationDto, UnreadNotificationCountDto } from '../types/notifications';
+import type { UserNotificationDto, UnreadNotificationCountDto, NotificationPreferenceDto, NotificationCategory } from '../types/notifications';
 
 export const NotificationService = {
   list(pageNumber = 1, pageSize = 30, unreadOnly = false): Promise<PagedResult<UserNotificationDto>> {
@@ -22,5 +22,14 @@ export const NotificationService = {
 
   markAllRead(): Promise<UnreadNotificationCountDto> {
     return http.post<UnreadNotificationCountDto>('/notifications/read-all');
+  },
+
+  // ── Preferences ────────────────────────────────────────────
+  preferences(): Promise<NotificationPreferenceDto[]> {
+    return http.get<NotificationPreferenceDto[]>('/notifications/preferences');
+  },
+
+  updatePreference(input: { category: NotificationCategory; inAppEnabled: boolean; smsEnabled: boolean }): Promise<NotificationPreferenceDto> {
+    return http.put<NotificationPreferenceDto>('/notifications/preferences', input);
   },
 };

@@ -2,17 +2,20 @@
 // NotificationBell.tsx
 // Location: src/features/notifications/components/NotificationBell.tsx
 //
-// Bell icon with unread badge + dropdown feed. Polls unread count
-// every 30s so clinicians/pharmacists see new alerts without
-// refreshing. Mark-read and mark-all-read inline.
+// Bell icon with unread badge + dropdown feed. Receives live
+// notifications over SignalR (instant badge/feed refresh), polls
+// every 30s as a fallback, and offers per-category delivery
+// preferences (in-app now, SMS-ready).
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, CheckCheck, Loader2 } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, Settings2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { NotificationService } from '../services/notificationService';
+import { subscribeToNotifications } from '../services/notificationHub';
 import type { UserNotificationDto } from '../types/notifications';
 import { formatDateTime } from '@/lib/format';
+import NotificationPreferencesPanel from './NotificationPreferencesPanel';
 
 const CATEGORY_EMOJI: Record<string, string> = {
   ConsultationRequested: '🩺',
@@ -21,12 +24,14 @@ const CATEGORY_EMOJI: Record<string, string> = {
   PrescriptionInitiated: '💊',
   PatientAdmitted: '🛏️',
   PatientDischarged: '🚪',
+  PatientTransferred: '🔀',
   ReferralCreated: '🔀',
   System: '🔔',
 };
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<UserNotificationDto[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,6 +55,13 @@ export default function NotificationBell() {
     void refresh();
     const timer = setInterval(() => void refresh(), 30_000);
     return () => clearInterval(timer);
+  }, [refresh]);
+
+  // Real-time: refresh the bell the moment a notification is pushed.
+  useEffect(() => {
+    return subscribeToNotifications(() => {
+      void refresh();
+    });
   }, [refresh]);
 
   useEffect(() => {
@@ -119,47 +131,62 @@ export default function NotificationBell() {
         <div className="absolute right-0 top-11 z-50 w-[380px] max-w-[calc(100vw-2rem)] card overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
             <p className="text-sm font-semibold text-slate-900">Notifications</p>
-            {unread > 0 && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => void markAll()}
-                disabled={busy}
-                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1"
+                onClick={() => setShowPrefs((p) => !p)}
+                className="text-xs font-medium text-slate-400 hover:text-indigo-600 inline-flex items-center gap-1"
+                aria-label="Notification preferences"
               >
-                {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
-                Mark all read
+                <Settings2 size={13} />
+                {showPrefs ? 'Feed' : 'Prefs'}
               </button>
-            )}
+              {unread > 0 && !showPrefs && (
+                <button
+                  type="button"
+                  onClick={() => void markAll()}
+                  disabled={busy}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1"
+                >
+                  {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
-            {loading ? (
-              <div className="flex items-center justify-center gap-2 py-10 text-slate-400 text-sm">
-                <Loader2 size={16} className="animate-spin text-indigo-600" /> Loading…
-              </div>
-            ) : items.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-10">No notifications yet.</p>
-            ) : (
-              items.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => void markRead(n.id)}
-                  className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${n.isRead ? 'opacity-60' : ''}`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-base leading-none mt-0.5">{CATEGORY_EMOJI[n.category] ?? '🔔'}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-slate-900">{n.title}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{n.message}</p>
-                      <p className="text-[11px] text-slate-400 mt-1">{formatDateTime(n.createdAtUtc)}</p>
+          {showPrefs ? (
+            <NotificationPreferencesPanel />
+          ) : (
+            <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-slate-400 text-sm">
+                  <Loader2 size={16} className="animate-spin text-indigo-600" /> Loading…
+                </div>
+              ) : items.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-10">No notifications yet.</p>
+              ) : (
+                items.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => void markRead(n.id)}
+                    className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${n.isRead ? 'opacity-60' : ''}`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-base leading-none mt-0.5">{CATEGORY_EMOJI[n.category] ?? '🔔'}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-900">{n.title}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{n.message}</p>
+                        <p className="text-[11px] text-slate-400 mt-1">{formatDateTime(n.createdAtUtc)}</p>
+                      </div>
+                      {!n.isRead && <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1.5" />}
                     </div>
-                    {!n.isRead && <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1.5" />}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

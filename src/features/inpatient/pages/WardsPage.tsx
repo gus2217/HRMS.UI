@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Loader2, BedDouble, DoorOpen, Inbox, Plus, Download, Paperclip, ShieldCheck,
+  Loader2, BedDouble, DoorOpen, Inbox, Plus, Download, Paperclip, ShieldCheck, ArrowLeftRight,
 } from 'lucide-react';
 import { InpatientService } from '../services/inpatientService';
 import type { AdmissionDetail, AdmissionListItem, WardOccupancyDto } from '../types/inpatient';
@@ -24,6 +24,7 @@ import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import AdmitPatientModal from '../components/AdmitPatientModal';
 import WardManageModal from '../components/WardManageModal';
 import AddMedicalRecordModal from '../components/AddMedicalRecordModal';
+import TransferPatientModal from '../components/TransferPatientModal';
 
 const STATUS_CLS: Record<string, string> = {
   Admitted: 'bg-emerald-100 text-emerald-700',
@@ -47,6 +48,7 @@ export default function WardsPage() {
   const [showAdmit, setShowAdmit] = useState(false);
   const [showWards, setShowWards] = useState(false);
   const [showRecord, setShowRecord] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
 
   const [active, setActive] = useState<AdmissionDetail | null>(null);
   const [activeLoading, setActiveLoading] = useState(false);
@@ -324,6 +326,13 @@ export default function WardsPage() {
                     {busy && <Loader2 size={14} className="animate-spin" />}
                     Discharge patient
                   </button>
+                  <button
+                    className="mt-2 w-full btn-ghost text-slate-600 border-slate-200 hover:bg-slate-100"
+                    onClick={() => setShowTransfer(true)}
+                  >
+                    <ArrowLeftRight size={14} className="inline mr-1" />
+                    Transfer to another ward
+                  </button>
                   {!recordsComplete && (
                     <p className="text-[11px] text-amber-700 mt-2">Complete a ward record (with assessment & plan) to unlock discharge. The bill must also be cleared.</p>
                   )}
@@ -458,6 +467,19 @@ export default function WardsPage() {
           onSaved={() => {
             setShowRecord(false);
             void refreshActive(active.id);
+          }}
+        />
+      )}
+      {showTransfer && active && (
+        <TransferPatientModal
+          admissionId={active.id}
+          currentWardId={active.wardId}
+          currentWardName={active.wardName}
+          onClose={() => setShowTransfer(false)}
+          onTransferred={() => {
+            setShowTransfer(false);
+            void refreshActive(active.id);
+            void load(page);
           }}
         />
       )}

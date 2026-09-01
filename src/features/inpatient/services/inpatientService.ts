@@ -47,6 +47,10 @@ export const InpatientService = {
     return http.post<AdmissionDetail>(`/inpatient/admissions/${id}/discharge`);
   },
 
+  transfer(id: string, input: { targetWardId: string; bedNumber: string }): Promise<AdmissionDetail> {
+    return http.post<AdmissionDetail>(`/inpatient/admissions/${id}/transfer`, input);
+  },
+
   addNote(id: string, content: string): Promise<AdmissionDetail> {
     return http.post<AdmissionDetail>(`/inpatient/admissions/${id}/notes`, { content });
   },
