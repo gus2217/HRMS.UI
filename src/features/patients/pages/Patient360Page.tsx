@@ -36,6 +36,7 @@ import type { LabOrderDetail } from '@/features/laboratory/types/laboratory';
 import type { PrescriptionDetail } from '@/features/pharmacy/types/pharmacy';
 import type { PatientDetail } from '@/features/patients/types/patient';
 import { MedicalRecordTimeline, type EnrichedVisit } from '../components/MedicalRecordTimeline';
+import ClinicalSummaryPanel from '../components/ClinicalSummaryPanel';
 import { formatDate, ageFromDateOfBirth } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
@@ -193,7 +194,10 @@ export default function Patient360Page() {
       </div>
 
       {isClinical ? (
-        <MedicalRecordTimeline record={record} visits={visits} />
+        <>
+          <ClinicalSummaryPanel patientId={patient.id} />
+          <MedicalRecordTimeline record={record} visits={visits} />
+        </>
       ) : (
         <MinimalRecord patient={patient} />
       )}
