@@ -35,6 +35,7 @@ import {
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasAnyPermission, hasPermission, PERMISSIONS, type Permission } from '@/lib/permissions';
 import { initials } from '@/lib/format';
+import NotificationBell from '@/features/notifications/components/NotificationBell';
 
 interface NavItem {
   to: string;
@@ -124,10 +125,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <span className="w-9 h-9 rounded-full bg-indigo-600/15 text-indigo-700 flex items-center justify-center text-xs font-bold">
             {initials(user?.fullName)}
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-slate-900 truncate">{user?.fullName}</p>
             <p className="text-[11px] text-slate-400 truncate">{user?.roles.join(', ')}</p>
           </div>
+          <NotificationBell />
         </div>
         <button
           onClick={handleLogout}
