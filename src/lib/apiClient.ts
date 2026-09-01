@@ -75,11 +75,12 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const isForm = options.body instanceof FormData;
   const doFetch = () =>
     fetch(`${API_BASE}${path}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...(isForm ? {} : { 'Content-Type': 'application/json' }),
         'X-Auth-Mode': 'bearer',
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...(options.headers ?? {}),
@@ -110,7 +111,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const http = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+    request<T>(path, {
+      method: 'POST',
+      body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
+    }),
   put: <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };

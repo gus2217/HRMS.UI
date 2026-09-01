@@ -1,43 +1,59 @@
-import { useEffect, useState } from 'react';
+// ============================================================
+// WardsPage.tsx
+// Location: src/features/inpatient/pages/WardsPage.tsx
+//
+// Hospital-oriented wards & admissions suite:
+//  • occupancy dashboard (real admin-managed wards)
+//  • elegant admission flow (ward + bed + diagnosis + attending)
+//  • day-to-day follow-up board: SOAP medical records with vitals
+//    and media/image uploads per record
+//  • discharge gating — a patient can only be discharged once
+//    medical records are filled AND the bill is cleared
+// ============================================================
+
+import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, BedDouble, DoorOpen, Inbox } from 'lucide-react';
+import {
+  Loader2, BedDouble, DoorOpen, Inbox, Plus, Download, Paperclip, ShieldCheck,
+} from 'lucide-react';
 import { InpatientService } from '../services/inpatientService';
-import { PatientService } from '@/features/patients/services/patientService';
 import type { AdmissionDetail, AdmissionListItem, WardOccupancyDto } from '../types/inpatient';
-import type { PatientSummary } from '@/features/patients/types/patient';
 import { formatDateTime } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
+import AdmitPatientModal from '../components/AdmitPatientModal';
+import WardManageModal from '../components/WardManageModal';
+import AddMedicalRecordModal from '../components/AddMedicalRecordModal';
 
-interface AdmissionRow extends AdmissionListItem {
-  detail?: AdmissionDetail;
-}
-
-const WARDS = ['General Ward', 'Maternity', 'Pediatric', 'Surgical', 'ICU', 'Isolation'];
+const STATUS_CLS: Record<string, string> = {
+  Admitted: 'bg-emerald-100 text-emerald-700',
+  UnderObservation: 'bg-sky-100 text-sky-700',
+  Transferred: 'bg-violet-100 text-violet-700',
+  DeceasedInFacility: 'bg-slate-100 text-slate-500',
+  Discharged: 'bg-slate-100 text-slate-500',
+};
 
 export default function WardsPage() {
-  const { user, permissions } = useAuth();
+  const { permissions } = useAuth();
+  const canAdmit = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
+  const canManageWards = hasPermission(permissions, PERMISSIONS.IDENTITY_USER_VIEW);
+
   const [occupancy, setOccupancy] = useState<WardOccupancyDto[]>([]);
-  const [admissions, setAdmissions] = useState<AdmissionRow[]>([]);
+  const [admissions, setAdmissions] = useState<AdmissionListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+
   const [showAdmit, setShowAdmit] = useState(false);
-  const [active, setActive] = useState<AdmissionRow | null>(null);
+  const [showWards, setShowWards] = useState(false);
+  const [showRecord, setShowRecord] = useState(false);
+
+  const [active, setActive] = useState<AdmissionDetail | null>(null);
   const [activeLoading, setActiveLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
 
-  const canAdmit = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
-
-  // Admit modal state
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<PatientSummary[]>([]);
-  const [selected, setSelected] = useState<PatientSummary | null>(null);
-  const [wardName, setWardName] = useState('General Ward');
-  const [bedNumber, setBedNumber] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const load = async (pageNumber: number) => {
+  const load = useCallback(async (pageNumber: number) => {
     setLoading(true);
     try {
       const [occ, list] = await Promise.all([
@@ -52,44 +68,39 @@ export default function WardsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load(page);
-  }, [page]);
+  }, [load, page]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!query.trim()) {
-        setResults([]);
-        return;
-      }
-      PatientService.search(query.trim(), 1, 6)
-        .then((res) => setResults(res.items))
-        .catch(() => setResults([]));
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const refreshActive = useCallback(async (id: string) => {
+    try {
+      setActive(await InpatientService.detail(id));
+    } catch {
+      /* keep last known */
+    }
+  }, []);
 
-  const open = async (a: AdmissionRow) => {
+  const open = async (a: AdmissionListItem) => {
     setActiveLoading(true);
-    setActive(a);
+    setActive(null);
     try {
       const detail = await InpatientService.detail(a.id);
-      setActive({ ...a, detail });
-    } catch {
-      setActive({ ...a, detail: undefined });
+      setActive(detail);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load admission');
     } finally {
       setActiveLoading(false);
     }
   };
 
   const discharge = async () => {
-    if (!active?.detail) return;
+    if (!active) return;
     setBusy(true);
     try {
-      const updated = await InpatientService.discharge(active.detail.id);
-      setActive((prev) => (prev ? { ...prev, detail: updated, status: updated.status } : prev));
+      const updated = await InpatientService.discharge(active.id);
+      setActive(updated);
       toast.success('Patient discharged');
       void load(page);
     } catch (err) {
@@ -99,12 +110,13 @@ export default function WardsPage() {
     }
   };
 
-  const addNote = async (content: string) => {
-    if (!active?.detail || !content.trim()) return;
+  const addNote = async () => {
+    if (!active || !note.trim()) return;
     setBusy(true);
     try {
-      const updated = await InpatientService.addNote(active.detail.id, content.trim());
-      setActive((prev) => (prev ? { ...prev, detail: updated } : prev));
+      const updated = await InpatientService.addNote(active.id, note.trim());
+      setActive(updated);
+      setNote('');
       toast.success('Ward note added');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add note');
@@ -113,66 +125,70 @@ export default function WardsPage() {
     }
   };
 
-  const admit = async () => {
-    if (!selected) {
-      toast.error('Select a patient first.');
-      return;
-    }
-    if (!wardName.trim() || !bedNumber.trim()) {
-      toast.error('Ward and bed number are required.');
-      return;
-    }
-    setSaving(true);
+  const attachFile = async (recordId: string, file: File) => {
     try {
-      const res = await InpatientService.admit({
-        patientId: selected.id,
-        admittingClinicianUserId: user?.id ?? '',
-        wardName: wardName.trim(),
-        bedNumber: bedNumber.trim(),
-      });
-      toast.success(`Admitted to ${res.wardName} · Bed ${res.bedNumber}`);
-      setShowAdmit(false);
-      setActive({
-        ...res,
-        patientName: selected.fullName,
-        patientNumber: selected.patientNumber,
-        detail: res,
-      });
-      setQuery('');
-      setSelected(null);
-      setBedNumber('');
-      void load(page);
+      const updated = await InpatientService.attachFile(recordId, file);
+      setActive(updated);
+      toast.success('File attached');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Admission failed');
-    } finally {
-      setSaving(false);
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
     }
   };
 
+  const downloadFile = (recordId: string, attachmentId: string) => {
+    void (async () => {
+      try {
+        const { getAccessToken } = await import('@/lib/apiClient');
+        const res = await fetch(InpatientService.attachmentDownloadUrl(recordId, attachmentId), {
+          headers: { Authorization: `Bearer ${getAccessToken()}` },
+        });
+        if (!res.ok) throw new Error('Download failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'attachment';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Download failed');
+      }
+    })();
+  };
+
+  const recordsComplete = active?.hasCompleteMedicalRecord ?? false;
+
   return (
     <div className="p-5 lg:p-8 space-y-5">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Wards & Admissions</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Occupancy, admissions and discharge</p>
+          <p className="text-sm text-slate-500 mt-0.5">Occupancy, daily follow-up and discharge</p>
         </div>
-        {canAdmit && (
-          <button className="btn-primary" onClick={() => setShowAdmit(true)}>
-            <DoorOpen size={16} />
-            Admit patient
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {canManageWards && (
+            <button className="btn-ghost" onClick={() => setShowWards(true)}>
+              <Plus size={16} /> Manage wards
+            </button>
+          )}
+          {canAdmit && (
+            <button className="btn-primary" onClick={() => setShowAdmit(true)}>
+              <DoorOpen size={16} /> Admit patient
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Occupancy */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {occupancy.map((w) => {
-          const pct = w.totalBeds > 0 ? Math.round((w.occupiedBeds / w.totalBeds) * 100) : w.occupiedBeds > 0 ? 100 : 0;
+          const pct = w.totalBeds > 0 ? Math.round((w.occupiedBeds / w.totalBeds) * 100) : 0;
           return (
-            <div key={w.wardName} className="card p-4">
+            <div key={w.wardId} className="card p-4">
               <p className="text-xs font-medium text-slate-500 truncate">{w.wardName}</p>
               <p className="text-xl font-bold text-slate-900 mt-1">
-                {w.occupiedBeds}{w.totalBeds > 0 && <span className="text-sm font-medium text-slate-400">/{w.totalBeds}</span>}
+                {w.occupiedBeds}<span className="text-sm font-medium text-slate-400">/{w.totalBeds}</span>
               </p>
               {w.totalBeds > 0 && (
                 <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
@@ -186,14 +202,18 @@ export default function WardsPage() {
           );
         })}
         {occupancy.length === 0 && !loading && (
-          <p className="text-sm text-slate-400 col-span-full text-center py-6">No ward occupancy data.</p>
+          <p className="text-sm text-slate-400 col-span-full text-center py-6">
+            No wards configured{canManageWards ? ' — use "Manage wards" to create them.' : '.'}
+          </p>
         )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
+        {/* Active admissions */}
         <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Active admissions</h2>
+            {total > 20 && <span className="text-xs text-slate-400">{total} total</span>}
           </div>
           {loading ? (
             <div className="flex items-center justify-center gap-3 py-14">
@@ -212,6 +232,7 @@ export default function WardsPage() {
                   <tr>
                     <th>Patient</th>
                     <th>Ward</th>
+                    <th>Admitted</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -223,10 +244,9 @@ export default function WardsPage() {
                         <p className="font-mono text-xs text-indigo-600">{a.patientNumber}</p>
                       </td>
                       <td className="text-slate-500">{a.wardName} · {a.bedNumber}</td>
+                      <td className="text-slate-500">{formatDateTime(a.admittedAtUtc)}</td>
                       <td>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          a.status === 'Discharged' ? 'bg-slate-100 text-slate-500' : 'bg-emerald-100 text-emerald-700'
-                        }`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLS[a.status] ?? 'bg-slate-100 text-slate-500'}`}>
                           {a.status}
                         </span>
                       </td>
@@ -247,139 +267,200 @@ export default function WardsPage() {
           )}
         </div>
 
+        {/* Admission detail */}
         <div className="card p-5 min-h-[300px]">
           <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-            <BedDouble size={15} className="text-indigo-600" /> Admission details
+            <BedDouble size={15} className="text-indigo-600" /> Admission & follow-up
           </h2>
+
           {activeLoading ? (
             <div className="flex items-center justify-center gap-3 py-16">
               <Loader2 size={20} className="animate-spin text-indigo-600" />
               <p className="text-sm text-slate-400">Loading…</p>
             </div>
-          ) : active && active.detail ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
+          ) : active ? (
+            <div className="space-y-5">
+              {/* Admission summary */}
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="text-sm">
-                  <p className="font-medium text-slate-900">{active.patientName}</p>
+                  <p className="font-medium text-slate-900">{admissions.find((a) => a.id === active.id)?.patientName ?? 'Patient'}</p>
                   <p className="text-slate-600 mt-0.5">
-                    Ward <span className="font-medium text-slate-900">{active.detail.wardName}</span> · Bed{' '}
-                    <span className="font-medium text-slate-900">{active.detail.bedNumber}</span>
+                    <span className="font-medium text-slate-900">{active.wardName}</span> · Bed{' '}
+                    <span className="font-medium text-slate-900">{active.bedNumber}</span>
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">Admitted {formatDateTime(active.detail.admittedAtUtc)}</p>
-                  {active.detail.dischargedAtUtc && (
-                    <p className="text-xs text-slate-400 mt-0.5">Discharged {formatDateTime(active.detail.dischargedAtUtc)}</p>
+                  {active.admittingDiagnosis && (
+                    <p className="text-xs text-slate-500 mt-0.5"><span className="font-medium">Diagnosis:</span> {active.admittingDiagnosis}</p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-0.5">Admitted {formatDateTime(active.admittedAtUtc)}</p>
+                  {active.dischargedAtUtc && (
+                    <p className="text-xs text-slate-400 mt-0.5">Discharged {formatDateTime(active.dischargedAtUtc)}</p>
                   )}
                 </div>
-                <span className="text-xs px-2.5 py-1 rounded-full border border-slate-200 bg-slate-100 text-slate-600">
-                  {active.detail.status}
+                <span className={`text-xs px-2.5 py-1 rounded-full border ${STATUS_CLS[active.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {active.status}
                 </span>
               </div>
 
-              {active.detail.status !== 'Discharged' && canAdmit && (
-                <button className="btn-ghost w-full text-red-600 border-red-200 hover:bg-red-50" disabled={busy} onClick={() => void discharge()}>
-                  {busy && <Loader2 size={14} className="animate-spin" />}
-                  Discharge patient
-                </button>
+              {/* Discharge gate */}
+              {active.status !== 'Discharged' && (
+                <div className={`rounded-lg border p-3 text-sm ${recordsComplete ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldCheck size={14} className={recordsComplete ? 'text-emerald-600' : 'text-amber-600'} />
+                    <p className="text-xs font-semibold text-slate-700">Discharge checklist</p>
+                  </div>
+                  <ul className="space-y-1 text-xs">
+                    <li className={`flex items-center gap-1.5 ${recordsComplete ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {recordsComplete ? '✓' : '✗'} Ward medical records completed (assessment + plan)
+                    </li>
+                    <li className="text-slate-500 flex items-center gap-1.5">
+                      <span>•</span> Bill cleared — enforced at discharge (the system checks automatically)
+                    </li>
+                  </ul>
+                  <button
+                    className={`mt-3 w-full ${recordsComplete ? 'btn-primary' : 'btn-ghost'} text-red-600 ${recordsComplete ? '' : 'border-red-200 hover:bg-red-50'}`}
+                    disabled={busy}
+                    onClick={() => void discharge()}
+                  >
+                    {busy && <Loader2 size={14} className="animate-spin" />}
+                    Discharge patient
+                  </button>
+                  {!recordsComplete && (
+                    <p className="text-[11px] text-amber-700 mt-2">Complete a ward record (with assessment & plan) to unlock discharge. The bill must also be cleared.</p>
+                  )}
+                </div>
               )}
 
+              {/* Day-to-day medical records */}
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Ward notes</p>
-                {active.detail.notes.length > 0 && (
-                  <ul className="space-y-2 mb-3">
-                    {active.detail.notes.map((n, i) => (
-                      <li key={i} className="text-sm text-slate-600">
-                        {n.content}
-                        <span className="block text-[11px] text-slate-400 mt-0.5">{formatDateTime(n.recordedAtUtc)}</span>
-                      </li>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Day-to-day ward records</p>
+                  {active.status !== 'Discharged' && canAdmit && (
+                    <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => setShowRecord(true)}>
+                      <Plus size={13} /> New record
+                    </button>
+                  )}
+                </div>
+
+                {active.medicalRecords.length === 0 ? (
+                  <p className="text-sm text-slate-400">No ward records yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {active.medicalRecords.map((r) => (
+                      <div key={r.id} className={`rounded-lg border p-3 ${r.isComplete ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs text-slate-400">{formatDateTime(r.recordedAtUtc)}</span>
+                          {r.isComplete ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Complete</span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Incomplete</span>
+                          )}
+                        </div>
+
+                        {(r.temperatureCelsius != null || r.systolicBp != null || r.pulseRate != null || r.oxygenSaturation != null) && (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 mb-2">
+                            {r.temperatureCelsius != null && <span>🌡 {r.temperatureCelsius}°C</span>}
+                            {r.systolicBp != null && <span>🩸 {r.systolicBp}/{r.diastolicBp ?? '—'}</span>}
+                            {r.pulseRate != null && <span>❤️ {r.pulseRate}</span>}
+                            {r.respiratoryRate != null && <span>🫁 {r.respiratoryRate}</span>}
+                            {r.oxygenSaturation != null && <span>SpO₂ {r.oxygenSaturation}%</span>}
+                            {r.weightKg != null && <span>⚖️ {r.weightKg}kg</span>}
+                          </div>
+                        )}
+
+                        <div className="space-y-1 text-xs text-slate-700">
+                          {r.subjective && <p><span className="font-medium text-slate-500">S:</span> {r.subjective}</p>}
+                          {r.objective && <p><span className="font-medium text-slate-500">O:</span> {r.objective}</p>}
+                          {r.assessment && <p><span className="font-medium text-slate-500">A:</span> {r.assessment}</p>}
+                          {r.plan && <p><span className="font-medium text-slate-500">P:</span> {r.plan}</p>}
+                        </div>
+
+                        {/* Attachments */}
+                        {r.attachments.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {r.attachments.map((at) => (
+                              <button
+                                key={at.id}
+                                type="button"
+                                onClick={() => downloadFile(r.id, at.id)}
+                                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-colors"
+                              >
+                                <Download size={11} /> {at.fileName}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {active.status !== 'Discharged' && canAdmit && (
+                          <label className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 cursor-pointer">
+                            <Paperclip size={12} /> Attach image/file
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (file) void attachFile(r.id, file);
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
-                {canAdmit && <WardNoteComposer onAdd={(content) => void addNote(content)} />}
               </div>
+
+              {/* Quick ward note */}
+              {active.status !== 'Discharged' && canAdmit && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Quick note</p>
+                  <div className="flex gap-2">
+                    <input className="input" placeholder="Add a brief ward note…" value={note} onChange={(e) => setNote(e.target.value)} />
+                    <button className="btn-primary shrink-0" disabled={!note.trim() || busy} onClick={() => void addNote()}>Add</button>
+                  </div>
+                  {active.notes.length > 0 && (
+                    <ul className="space-y-1.5 mt-3">
+                      {active.notes.slice(-5).reverse().map((n, i) => (
+                        <li key={i} className="text-xs text-slate-500">
+                          {n.content}
+                          <span className="block text-[10px] text-slate-400">{formatDateTime(n.recordedAtUtc)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
               <BedDouble size={28} className="text-slate-300" />
-              <p className="text-sm text-slate-400 max-w-xs">Select an admission to view ward notes and discharge.</p>
+              <p className="text-sm text-slate-400 max-w-xs">Select an admission to view daily follow-up records and discharge.</p>
             </div>
           )}
         </div>
       </div>
 
-      {showAdmit && canAdmit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setShowAdmit(false)}>
-          <div className="card w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h2 className="text-sm font-semibold text-slate-900">Admit patient</h2>
-              <button onClick={() => setShowAdmit(false)} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1.5">Patient</label>
-                <input className="input" placeholder="Search patient…" value={query} onChange={(e) => setQuery(e.target.value)} />
-                {results.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {results.map((p) => (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelected(p);
-                            setQuery('');
-                            setResults([]);
-                          }}
-                          className="w-full text-left px-3 py-2 rounded-lg text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                        >
-                          {p.fullName} <span className="ml-2 font-mono text-xs text-indigo-600">{p.patientNumber}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {selected && <p className="text-xs text-emerald-600 mt-2">✓ {selected.fullName}</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Ward</label>
-                  <select className="input" value={wardName} onChange={(e) => setWardName(e.target.value)}>
-                    {WARDS.map((w) => <option key={w}>{w}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Bed number</label>
-                  <input className="input" placeholder="e.g. A-12" value={bedNumber} onChange={(e) => setBedNumber(e.target.value)} />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button className="btn-ghost" onClick={() => setShowAdmit(false)}>Cancel</button>
-                <button className="btn-primary" disabled={saving} onClick={() => void admit()}>
-                  {saving && <Loader2 size={15} className="animate-spin" />}
-                  Admit
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {showAdmit && (
+        <AdmitPatientModal
+          onClose={() => setShowAdmit(false)}
+          onAdmitted={(id) => {
+            setShowAdmit(false);
+            void load(page);
+            void open({ id, patientId: '', patientNumber: '', patientName: '', wardId: '', wardName: '', bedNumber: '', status: 'Admitted', admittedAtUtc: '', dischargedAtUtc: null } as AdmissionListItem);
+          }}
+        />
       )}
-    </div>
-  );
-}
-
-function WardNoteComposer({ onAdd }: { onAdd: (content: string) => void }) {
-  const [note, setNote] = useState('');
-  return (
-    <div className="flex gap-2">
-      <input className="input" placeholder="Add ward note…" value={note} onChange={(e) => setNote(e.target.value)} />
-      <button
-        className="btn-primary shrink-0"
-        disabled={!note.trim()}
-        onClick={() => {
-          onAdd(note);
-          setNote('');
-        }}
-      >
-        Add
-      </button>
+      {showWards && <WardManageModal onClose={() => setShowWards(false)} onChanged={() => void load(page)} />}
+      {showRecord && active && (
+        <AddMedicalRecordModal
+          admissionId={active.id}
+          onClose={() => setShowRecord(false)}
+          onSaved={() => {
+            setShowRecord(false);
+            void refreshActive(active.id);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -41,7 +41,7 @@ import type { ConsultationDetail, ClinicalDocumentationDto, PatientMedicalRecord
 import type { PatientDetail } from '@/features/patients/types/patient';
 import type { DrugCatalogDto } from '@/features/inventory/types/inventory';
 import type { InvoiceDetail } from '@/features/billing/types/billing';
-import type { AdmissionDetail } from '@/features/inpatient/types/inpatient';
+import type { AdmissionDetail, WardDto } from '@/features/inpatient/types/inpatient';
 import type { LabOrderDetail } from '@/features/laboratory/types/laboratory';
 import type { PrescriptionDetail } from '@/features/pharmacy/types/pharmacy';
 import { MedicalRecordTimeline, type EnrichedVisit } from '@/features/patients/components/MedicalRecordTimeline';
@@ -895,9 +895,16 @@ function AdmitPanel({
   const { user } = useAuth();
   const [admissions, setAdmissions] = useState<AdmissionDetail[]>([]);
   const [loading, setLoading] = useState(false);
-  const [wardName, setWardName] = useState('');
+  const [wardId, setWardId] = useState('');
+  const [wards, setWards] = useState<WardDto[]>([]);
   const [bedNumber, setBedNumber] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    InpatientService.wards(true)
+      .then(setWards)
+      .catch(() => setWards([]));
+  }, []);
 
   const load = async () => {
     if (!patientId) return;
@@ -919,8 +926,8 @@ function AdmitPanel({
   }, [patientId]);
 
   const admit = async () => {
-    if (!patientId || !wardName.trim() || !bedNumber.trim()) {
-      toast.error('Ward name and bed number are required.');
+    if (!patientId || !wardId || !bedNumber.trim()) {
+      toast.error('Select a ward and enter the bed number.');
       return;
     }
     setSaving(true);
@@ -928,11 +935,11 @@ function AdmitPanel({
       await InpatientService.admit({
         patientId,
         admittingClinicianUserId: user?.id ?? '',
-        wardName: wardName.trim(),
+        wardId,
         bedNumber: bedNumber.trim(),
       });
       toast.success('Patient admitted');
-      setWardName('');
+      setWardId('');
       setBedNumber('');
       await load();
     } catch (err) {
@@ -1025,7 +1032,12 @@ function AdmitPanel({
         <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Admit patient</p>
           <div className="grid sm:grid-cols-2 gap-3">
-            <input className="input" placeholder="Ward name (e.g. Male Medical)" value={wardName} onChange={(e) => setWardName(e.target.value)} />
+            <select className="input" value={wardId} onChange={(e) => setWardId(e.target.value)}>
+              <option value="">Select ward…</option>
+              {wards.map((w) => (
+                <option key={w.id} value={w.id}>{w.name} ({w.totalBeds} beds)</option>
+              ))}
+            </select>
             <input className="input" placeholder="Bed number" value={bedNumber} onChange={(e) => setBedNumber(e.target.value)} />
           </div>
           <div className="flex justify-end mt-3">
