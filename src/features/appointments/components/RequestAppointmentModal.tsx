@@ -105,7 +105,7 @@ export default function RequestAppointmentModal({ onClose, onRequested }: Props)
           ) : (
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1.5">Patient *</label>
-              <input className="input" placeholder="Search by name or number…" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+              <input className="input" placeholder="Search by name, number, phone or ID…" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
               {searching && <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-2"><Loader2 size={12} className="animate-spin" /> Searching…</p>}
               {results.length > 0 && (
                 <ul className="mt-2 space-y-1 max-h-44 overflow-y-auto">

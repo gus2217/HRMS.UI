@@ -231,6 +231,10 @@ export default function BillingPage() {
                 setActive((prev) => (prev ? { ...prev, status: 'Paid', detail: prev.detail ? { ...prev.detail, status: 'Paid' } : undefined } : prev));
                 void load(page, status);
               }}
+              onCancelled={() => {
+                setActive(null);
+                void load(page, status);
+              }}
             />
           ) : (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
@@ -251,7 +255,7 @@ export default function BillingPage() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1.5">Patient</label>
-                <input className="input" placeholder="Search patient…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <input className="input" placeholder="Search by name, number, phone or ID…" value={query} onChange={(e) => setQuery(e.target.value)} />
                 {results.length > 0 && (
                   <ul className="mt-2 space-y-1">
                     {results.map((p) => (
@@ -334,12 +338,14 @@ function InvoiceDetailView({
   canRecordPayment,
   canIssue,
   onPaid,
+  onCancelled,
 }: {
   invoice: InvoiceDetail;
   patientName?: string;
   canRecordPayment: boolean;
   canIssue: boolean;
   onPaid: (r: PaymentReceiptDto) => void;
+  onCancelled: () => void;
 }) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('Cash');
@@ -348,6 +354,7 @@ function InvoiceDetailView({
   const [showSha, setShowSha] = useState(false);
   const [shaRef, setShaRef] = useState('');
   const [shaSaving, setShaSaving] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const pay = async () => {
     const amt = Number(amount);
@@ -386,6 +393,20 @@ function InvoiceDetailView({
       toast.error(err instanceof Error ? err.message : 'SHA claim failed');
     } finally {
       setShaSaving(false);
+    }
+  };
+
+  const cancel = async () => {
+    if (!window.confirm('Cancel this invoice? This cannot be undone.')) return;
+    setCancelling(true);
+    try {
+      await BillingService.cancelInvoice(invoice.id);
+      toast.success('Invoice cancelled');
+      onCancelled();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to cancel invoice');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -453,6 +474,17 @@ function InvoiceDetailView({
             </div>
           )}
         </div>
+      )}
+
+      {invoice.status !== 'Paid' && invoice.status !== 'Cancelled' && canIssue && (
+        <button
+          className="w-full btn-ghost text-red-600 border-red-200 hover:bg-red-50"
+          disabled={cancelling}
+          onClick={() => void cancel()}
+        >
+          {cancelling && <Loader2 size={14} className="animate-spin" />}
+          Cancel invoice
+        </button>
       )}
     </div>
   );

@@ -67,7 +67,7 @@ export default function PatientsPage() {
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           className="input pl-10"
-          placeholder="Search by name, number or phone…"
+          placeholder="Search by name, number, phone or ID…"
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
         />

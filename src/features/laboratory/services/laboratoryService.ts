@@ -37,6 +37,10 @@ export const LaboratoryService = {
     return http.post<LabOrderDetail>(`/lab/orders/${id}/results`, input);
   },
 
+  cancelOrder(id: string, reason?: string | null): Promise<LabOrderDetail> {
+    return http.post<LabOrderDetail>(`/lab/orders/${id}/cancel`, { reason });
+  },
+
   list(pageNumber = 1, pageSize = 20, status?: string, patientId?: string): Promise<PagedResult<LabOrderListItem>> {
     const q = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) });
     if (status) q.set('status', status);

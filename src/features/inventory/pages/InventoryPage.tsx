@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, Boxes, PackagePlus, AlertTriangle } from 'lucide-react';
+import { Loader2, Boxes, PackagePlus, AlertTriangle, Pencil } from 'lucide-react';
 import { InventoryService } from '../services/inventoryService';
 import type { StockLevelDto, LowStockAlertDto, DrugCatalogDto } from '../types/inventory';
 import { formatNumber } from '@/lib/format';
@@ -13,8 +13,9 @@ export default function InventoryPage() {
   const [showReceive, setShowReceive] = useState(false);
 
   // New drug modal state
-  const [drugForm, setDrugForm] = useState({ code: '', name: '', form: 'Tablet', unitPrice: 0, reorderLevel: 10 });
+  const [drugForm, setDrugForm] = useState({ code: '', name: '', category: '', form: 'Tablet', unitPrice: 0, reorderLevel: 10 });
   const [drugSaving, setDrugSaving] = useState(false);
+  const [editingDrugId, setEditingDrugId] = useState<string | null>(null);
 
   // Receive stock modal state
   const [recDrugId, setRecDrugId] = useState('');
@@ -52,21 +53,56 @@ export default function InventoryPage() {
     }
     setDrugSaving(true);
     try {
-      const res: DrugCatalogDto = await InventoryService.createDrug({
-        code: drugForm.code.trim(),
-        name: drugForm.name.trim(),
-        form: drugForm.form,
-        unitPrice: drugForm.unitPrice,
-        reorderLevel: drugForm.reorderLevel,
-      });
-      toast.success(`${res.name} created`);
+      if (editingDrugId) {
+        const res: DrugCatalogDto = await InventoryService.updateDrug(editingDrugId, {
+          name: drugForm.name.trim(),
+          category: drugForm.category.trim(),
+          form: drugForm.form,
+          unitPrice: drugForm.unitPrice,
+          reorderLevel: drugForm.reorderLevel,
+        });
+        toast.success(`${res.name} updated`);
+      } else {
+        const res: DrugCatalogDto = await InventoryService.createDrug({
+          code: drugForm.code.trim(),
+          name: drugForm.name.trim(),
+          form: drugForm.form,
+          unitPrice: drugForm.unitPrice,
+          reorderLevel: drugForm.reorderLevel,
+        });
+        toast.success(`${res.name} created`);
+      }
       setShowDrug(false);
-      setDrugForm({ code: '', name: '', form: 'Tablet', unitPrice: 0, reorderLevel: 10 });
+      setEditingDrugId(null);
+      setDrugForm({ code: '', name: '', category: '', form: 'Tablet', unitPrice: 0, reorderLevel: 10 });
       void load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create drug');
+      toast.error(err instanceof Error ? err.message : 'Failed to save drug');
     } finally {
       setDrugSaving(false);
+    }
+  };
+
+  const startEditDrug = async (drugId: string) => {
+    try {
+      const cat = await InventoryService.catalog('', 1, 500);
+      const drug = cat.items.find((d) => d.id === drugId);
+      if (!drug) {
+        toast.error('Drug not found in catalog');
+        return;
+      }
+      setDrugForm({
+        code: drug.code,
+        name: drug.name,
+        category: drug.category,
+        form: drug.form,
+        unitPrice: drug.unitPrice,
+        reorderLevel: drug.reorderLevel,
+      });
+      setEditingDrugId(drug.id);
+      setShowDrug(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load drug');
     }
   };
 
@@ -146,6 +182,7 @@ export default function InventoryPage() {
                   <th className="text-right">On hand</th>
                   <th className="text-right">Reorder level</th>
                   <th>Status</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -164,12 +201,22 @@ export default function InventoryPage() {
                           {low ? 'Low' : 'OK'}
                         </span>
                       </td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          title="Edit drug"
+                          onClick={() => void startEditDrug(s.drugId)}
+                          className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
                 {stock.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center py-10 text-slate-400">No stock records.</td>
+                    <td colSpan={6} className="text-center py-10 text-slate-400">No stock records.</td>
                   </tr>
                 )}
               </tbody>
@@ -182,8 +229,8 @@ export default function InventoryPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setShowDrug(false)}>
           <div className="card w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h2 className="text-sm font-semibold text-slate-900">New drug</h2>
-              <button onClick={() => setShowDrug(false)} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
+              <h2 className="text-sm font-semibold text-slate-900">{editingDrugId ? 'Edit drug' : 'New drug'}</h2>
+              <button onClick={() => { setShowDrug(false); setEditingDrugId(null); }} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -202,6 +249,10 @@ export default function InventoryPage() {
                 <label className="block text-xs font-medium text-slate-500 mb-1.5">Name</label>
                 <input className="input" placeholder="e.g. Amoxicillin 500mg" value={drugForm.name} onChange={(e) => setDrugForm((f) => ({ ...f, name: e.target.value }))} />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">Category</label>
+                <input className="input" placeholder="e.g. Antibiotic" value={drugForm.category} onChange={(e) => setDrugForm((f) => ({ ...f, category: e.target.value }))} />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1.5">Unit price (KES)</label>
@@ -213,10 +264,10 @@ export default function InventoryPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <button className="btn-ghost" onClick={() => setShowDrug(false)}>Cancel</button>
+                <button className="btn-ghost" onClick={() => { setShowDrug(false); setEditingDrugId(null); }}>Cancel</button>
                 <button className="btn-primary" disabled={drugSaving} onClick={() => void createDrug()}>
                   {drugSaving && <Loader2 size={15} className="animate-spin" />}
-                  Create
+                  {editingDrugId ? 'Save changes' : 'Create'}
                 </button>
               </div>
             </div>

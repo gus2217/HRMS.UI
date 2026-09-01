@@ -12,6 +12,7 @@ export interface PatientSummary {
 }
 
 export interface AllergyDto {
+  id: string;
   substance: string;
   severity: string;
   notes: string | null;

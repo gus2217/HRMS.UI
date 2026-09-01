@@ -101,6 +101,17 @@ export default function WardManageModal({ onClose, onChanged }: Props) {
     }
   };
 
+  const reactivate = async (w: WardDto) => {
+    try {
+      await InpatientService.reactivateWard(w.id);
+      toast.success(`${w.name} reactivated`);
+      await load();
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reactivate ward');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="card w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -165,6 +176,12 @@ export default function WardManageModal({ onClose, onChanged }: Props) {
                     {w.isActive && (
                       <button type="button" onClick={() => void deactivate(w)} title="Deactivate"
                         className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                        <Power size={14} />
+                      </button>
+                    )}
+                    {!w.isActive && (
+                      <button type="button" onClick={() => void reactivate(w)} title="Reactivate"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
                         <Power size={14} />
                       </button>
                     )}

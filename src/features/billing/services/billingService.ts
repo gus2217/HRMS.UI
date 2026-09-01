@@ -29,6 +29,10 @@ export const BillingService = {
     return http.post<PaymentReceiptDto>('/billing/payments', input);
   },
 
+  cancelInvoice(invoiceId: string): Promise<InvoiceDetail> {
+    return http.post<InvoiceDetail>(`/billing/invoices/${invoiceId}/cancel`);
+  },
+
   submitShaClaim(invoiceId: string, shaClaimReference: string): Promise<ShaClaimSubmissionDto> {
     return http.post<ShaClaimSubmissionDto>('/billing/sha/claims', { invoiceId, shaClaimReference });
   },

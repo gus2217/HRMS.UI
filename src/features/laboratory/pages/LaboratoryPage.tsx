@@ -161,6 +161,19 @@ export default function LaboratoryPage() {
     }
   };
 
+  const cancelOrder = async () => {
+    if (!active?.detail) return;
+    if (!window.confirm('Cancel this lab order? Results cannot be recorded afterwards.')) return;
+    try {
+      const updated = await LaboratoryService.cancelOrder(active.detail.id, 'Cancelled by clinician');
+      setActive((prev) => (prev ? { ...prev, detail: updated } : prev));
+      void load(page);
+      toast.success('Lab order cancelled');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to cancel order');
+    }
+  };
+
   return (
     <div className="p-5 lg:p-8 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -247,9 +260,19 @@ export default function LaboratoryPage() {
                   <p className="text-sm font-medium text-slate-900">{active.patientName}</p>
                   <p className="text-xs text-slate-400">Ordered {formatDateTime(active.detail.orderedAtUtc)}</p>
                 </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_STYLES[active.detail.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                  {active.detail.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2.5 py-1 rounded-full ${STATUS_STYLES[active.detail.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                    {active.detail.status}
+                  </span>
+                  {canOrder && active.detail.status !== 'Completed' && active.detail.status !== 'Cancelled' && (
+                    <button
+                      className="text-xs text-red-600 border border-red-200 rounded-lg px-2 py-1 hover:bg-red-50 transition-colors"
+                      onClick={() => void cancelOrder()}
+                    >
+                      Cancel order
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 {active.detail.tests.map((t) => (
@@ -294,7 +317,7 @@ export default function LaboratoryPage() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1.5">Patient</label>
-                <input className="input" placeholder="Search patient…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <input className="input" placeholder="Search by name, number, phone or ID…" value={query} onChange={(e) => setQuery(e.target.value)} />
                 {results.length > 0 && (
                   <ul className="mt-2 space-y-1">
                     {results.map((p) => (

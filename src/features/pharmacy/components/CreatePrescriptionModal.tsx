@@ -138,7 +138,7 @@ export default function CreatePrescriptionModal({ drugs, onClose, onCreated }: P
         <form onSubmit={submit} className="p-5 space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Patient</label>
-            <input className="input" placeholder="Search patient…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input className="input" placeholder="Search by name, number, phone or ID…" value={query} onChange={(e) => setQuery(e.target.value)} />
             {results.length > 0 && (
               <ul className="mt-2 space-y-1">
                 {results.map((p) => (

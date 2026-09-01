@@ -27,6 +27,10 @@ export const InpatientService = {
     return http.post<WardDto>(`/inpatient/wards/${id}/deactivate`);
   },
 
+  reactivateWard(id: string): Promise<WardDto> {
+    return http.post<WardDto>(`/inpatient/wards/${id}/reactivate`);
+  },
+
   // ── Admissions ─────────────────────────────────────────────
   admit(input: {
     patientId: string;

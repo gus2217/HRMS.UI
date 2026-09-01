@@ -66,7 +66,7 @@ export default function StartConsultationModal({ onClose, onStarted }: Props) {
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Find patient</label>
             <input
               className="input"
-              placeholder="Search by name or number…"
+              placeholder="Search by name, number, phone or ID…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               autoFocus

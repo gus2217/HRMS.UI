@@ -11,6 +11,10 @@ export const InventoryService = {
     return http.post<DrugCatalogDto>('/inventory/drugs', input);
   },
 
+  updateDrug(id: string, input: { name: string; category: string; form: string; unitPrice: number; reorderLevel: number }): Promise<DrugCatalogDto> {
+    return http.put<DrugCatalogDto>(`/inventory/drugs/${id}`, input);
+  },
+
   receiveStock(input: {
     drugId: string;
     batchNumber: string;

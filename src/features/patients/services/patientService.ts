@@ -50,4 +50,16 @@ export const PatientService = {
   detail(id: string): Promise<PatientDetail> {
     return http.get<PatientDetail>(`/patients/${id}`);
   },
+
+  addAllergy(patientId: string, input: { substance: string; severity: string; notes?: string | null }): Promise<PatientDetail> {
+    return http.post<PatientDetail>(`/patients/${patientId}/allergies`, input);
+  },
+
+  removeAllergy(patientId: string, allergyId: string): Promise<PatientDetail> {
+    return http.delete<PatientDetail>(`/patients/${patientId}/allergies/${allergyId}`);
+  },
+
+  recordConsent(patientId: string, input: { type: string; granted: boolean }): Promise<PatientDetail> {
+    return http.post<PatientDetail>(`/patients/${patientId}/consents`, input);
+  },
 };

@@ -130,7 +130,7 @@ export default function QueuePatientModal({ onClose, onQueued }: Props) {
               <div>
                 <input
                   className="input"
-                  placeholder="Search by name or patient number…"
+                  placeholder="Search by name, number, phone or ID…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   autoFocus
