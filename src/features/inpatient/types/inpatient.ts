@@ -24,6 +24,7 @@ export interface WardNoteDto {
   content: string;
   authorUserId: string;
   recordedAtUtc: string;
+  authorName: string | null;
 }
 
 export interface WardRecordAttachmentDto {
@@ -31,7 +32,9 @@ export interface WardRecordAttachmentDto {
   fileName: string;
   contentType: string;
   sizeBytes: number;
+  uploadedByUserId: string;
   uploadedAtUtc: string;
+  uploadedByName: string | null;
 }
 
 export interface WardMedicalRecordDto {
@@ -51,6 +54,7 @@ export interface WardMedicalRecordDto {
   plan: string | null;
   isComplete: boolean;
   attachments: WardRecordAttachmentDto[];
+  recordedByName: string | null;
 }
 
 export interface AdmissionDetail {
@@ -68,6 +72,8 @@ export interface AdmissionDetail {
   notes: WardNoteDto[];
   medicalRecords: WardMedicalRecordDto[];
   hasCompleteMedicalRecord: boolean;
+  admittingClinicianName: string | null;
+  attendingClinicianName: string | null;
 }
 
 export interface WardOccupancyDto {

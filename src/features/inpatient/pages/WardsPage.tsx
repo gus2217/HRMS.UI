@@ -15,10 +15,11 @@ import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Loader2, BedDouble, DoorOpen, Inbox, Plus, Download, Paperclip, ShieldCheck, ArrowLeftRight,
+  Image as ImageIcon, FileText, X, Activity, HeartPulse, Thermometer, Wind, Scale,
 } from 'lucide-react';
 import { InpatientService } from '../services/inpatientService';
-import type { AdmissionDetail, AdmissionListItem, WardOccupancyDto } from '../types/inpatient';
-import { formatDateTime } from '@/lib/format';
+import type { AdmissionDetail, AdmissionListItem, WardOccupancyDto, WardRecordAttachmentDto } from '../types/inpatient';
+import { formatDateTime, formatBytes } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import AdmitPatientModal from '../components/AdmitPatientModal';
@@ -54,6 +55,8 @@ export default function WardsPage() {
   const [activeLoading, setActiveLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  const [uploadingRecordId, setUploadingRecordId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string; contentType: string } | null>(null);
 
   const load = useCallback(async (pageNumber: number) => {
     setLoading(true);
@@ -128,34 +131,60 @@ export default function WardsPage() {
   };
 
   const attachFile = async (recordId: string, file: File) => {
+    setUploadingRecordId(recordId);
     try {
       const updated = await InpatientService.attachFile(recordId, file);
       setActive(updated);
       toast.success('File attached');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingRecordId(null);
     }
   };
 
-  const downloadFile = (recordId: string, attachmentId: string) => {
-    void (async () => {
-      try {
-        const { getAccessToken } = await import('@/lib/apiClient');
-        const res = await fetch(InpatientService.attachmentDownloadUrl(recordId, attachmentId), {
-          headers: { Authorization: `Bearer ${getAccessToken()}` },
-        });
-        if (!res.ok) throw new Error('Download failed');
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'attachment';
-        a.click();
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Download failed');
-      }
-    })();
+  const isImage = (contentType: string) => contentType.startsWith('image/');
+
+  const mediaUrl = async (recordId: string, at: WardRecordAttachmentDto): Promise<string | null> => {
+    try {
+      const { getAccessToken } = await import('@/lib/apiClient');
+      const res = await fetch(InpatientService.attachmentDownloadUrl(recordId, at.id), {
+        headers: { Authorization: `Bearer ${getAccessToken()}` },
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch {
+      return null;
+    }
+  };
+
+  const downloadFile = async (recordId: string, at: WardRecordAttachmentDto) => {
+    try {
+      const { getAccessToken } = await import('@/lib/apiClient');
+      const res = await fetch(InpatientService.attachmentDownloadUrl(recordId, at.id), {
+        headers: { Authorization: `Bearer ${getAccessToken()}` },
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = at.fileName || 'attachment';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Download failed');
+    }
+  };
+
+  const openPreview = async (recordId: string, at: WardRecordAttachmentDto) => {
+    const url = await mediaUrl(recordId, at);
+    if (!url) {
+      toast.error('Could not load file preview');
+      return;
+    }
+    setPreview({ url, name: at.fileName, contentType: at.contentType });
   };
 
   const recordsComplete = active?.hasCompleteMedicalRecord ?? false;
@@ -293,7 +322,12 @@ export default function WardsPage() {
                   {active.admittingDiagnosis && (
                     <p className="text-xs text-slate-500 mt-0.5"><span className="font-medium">Diagnosis:</span> {active.admittingDiagnosis}</p>
                   )}
-                  <p className="text-xs text-slate-400 mt-0.5">Admitted {formatDateTime(active.admittedAtUtc)}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Admitted {formatDateTime(active.admittedAtUtc)}
+                    {active.admittingClinicianName ? ` · by ${active.admittingClinicianName}` : ''}
+                  </p>
+                  {active.attendingClinicianName && (
+                    <p className="text-xs text-slate-400 mt-0.5">Attending: {active.attendingClinicianName}</p>
+                  )}
                   {active.dischargedAtUtc && (
                     <p className="text-xs text-slate-400 mt-0.5">Discharged {formatDateTime(active.dischargedAtUtc)}</p>
                   )}
@@ -353,66 +387,166 @@ export default function WardsPage() {
                 {active.medicalRecords.length === 0 ? (
                   <p className="text-sm text-slate-400">No ward records yet.</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {active.medicalRecords.map((r) => (
-                      <div key={r.id} className={`rounded-lg border p-3 ${r.isComplete ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'}`}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs text-slate-400">{formatDateTime(r.recordedAtUtc)}</span>
+                      <div
+                        key={r.id}
+                        className={`rounded-xl border overflow-hidden ${r.isComplete ? 'border-emerald-200' : 'border-slate-200'}`}
+                      >
+                        {/* Record header */}
+                        <div className={`flex items-center justify-between gap-3 px-4 py-2.5 ${r.isComplete ? 'bg-emerald-50/60' : 'bg-slate-50'}`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-semibold text-slate-700">Ward record</span>
+                            <span className="text-[11px] text-slate-400">
+                              {formatDateTime(r.recordedAtUtc)}
+                              {r.recordedByName ? ` · by ${r.recordedByName}` : ''}
+                            </span>
+                          </div>
                           {r.isComplete ? (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Complete</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium shrink-0">Complete</span>
                           ) : (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Incomplete</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium shrink-0">Incomplete</span>
                           )}
                         </div>
 
-                        {(r.temperatureCelsius != null || r.systolicBp != null || r.pulseRate != null || r.oxygenSaturation != null) && (
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 mb-2">
-                            {r.temperatureCelsius != null && <span>🌡 {r.temperatureCelsius}°C</span>}
-                            {r.systolicBp != null && <span>🩸 {r.systolicBp}/{r.diastolicBp ?? '—'}</span>}
-                            {r.pulseRate != null && <span>❤️ {r.pulseRate}</span>}
-                            {r.respiratoryRate != null && <span>🫁 {r.respiratoryRate}</span>}
-                            {r.oxygenSaturation != null && <span>SpO₂ {r.oxygenSaturation}%</span>}
-                            {r.weightKg != null && <span>⚖️ {r.weightKg}kg</span>}
-                          </div>
-                        )}
+                        <div className="p-4 space-y-4">
+                          {/* Vitals chips */}
+                          {(r.temperatureCelsius != null || r.systolicBp != null || r.pulseRate != null || r.respiratoryRate != null || r.oxygenSaturation != null || r.weightKg != null) && (
+                            <div className="flex flex-wrap gap-2">
+                              {r.temperatureCelsius != null && (
+                                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                  <Thermometer size={12} className="text-slate-400" /> {r.temperatureCelsius}°C
+                                </span>
+                              )}
+                              {r.systolicBp != null && (
+                                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                  <HeartPulse size={12} className="text-slate-400" /> {r.systolicBp}/{r.diastolicBp ?? '—'} mmHg
+                                </span>
+                              )}
+                              {r.pulseRate != null && (
+                                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                  <Activity size={12} className="text-slate-400" /> {r.pulseRate} bpm
+                                </span>
+                              )}
+                              {r.respiratoryRate != null && (
+                                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                  <Wind size={12} className="text-slate-400" /> {r.respiratoryRate} /min
+                                </span>
+                              )}
+                              {r.oxygenSaturation != null && (
+                                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                  <Activity size={12} className="text-slate-400" /> SpO₂ {r.oxygenSaturation}%
+                                </span>
+                              )}
+                              {r.weightKg != null && (
+                                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                  <Scale size={12} className="text-slate-400" /> {r.weightKg} kg
+                                </span>
+                              )}
+                            </div>
+                          )}
 
-                        <div className="space-y-1 text-xs text-slate-700">
-                          {r.subjective && <p><span className="font-medium text-slate-500">S:</span> {r.subjective}</p>}
-                          {r.objective && <p><span className="font-medium text-slate-500">O:</span> {r.objective}</p>}
-                          {r.assessment && <p><span className="font-medium text-slate-500">A:</span> {r.assessment}</p>}
-                          {r.plan && <p><span className="font-medium text-slate-500">P:</span> {r.plan}</p>}
+                          {/* SOAP */}
+                          {(r.subjective || r.objective || r.assessment || r.plan) && (
+                            <div className="grid sm:grid-cols-2 gap-3">
+                              {r.subjective && (
+                                <div className="text-xs">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Subjective</p>
+                                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{r.subjective}</p>
+                                </div>
+                              )}
+                              {r.objective && (
+                                <div className="text-xs">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Objective</p>
+                                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{r.objective}</p>
+                                </div>
+                              )}
+                              {r.assessment && (
+                                <div className="text-xs">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Assessment</p>
+                                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{r.assessment}</p>
+                                </div>
+                              )}
+                              {r.plan && (
+                                <div className="text-xs">
+                                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Plan</p>
+                                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{r.plan}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Media gallery */}
+                          {r.attachments.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                Attachments ({r.attachments.length})
+                              </p>
+                              <div className="flex flex-wrap gap-2.5">
+                                {r.attachments.map((at) => {
+                                  const isImg = isImage(at.contentType);
+                                  return isImg ? (
+                                    <button
+                                      key={at.id}
+                                      type="button"
+                                      onClick={() => void openPreview(r.id, at)}
+                                      title={`${at.fileName} — click to preview`}
+                                      className="group relative h-20 w-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:border-indigo-400 transition-colors"
+                                    >
+                                      <ImageIcon size={20} className="absolute inset-0 m-auto text-slate-300" />
+                                      <span className="absolute inset-x-0 bottom-0 bg-slate-900/70 text-white text-[9px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {at.fileName}
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <div
+                                      key={at.id}
+                                      className="flex items-center gap-2 max-w-[220px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
+                                    >
+                                      <FileText size={14} className="text-slate-400 shrink-0" />
+                                      <div className="min-w-0">
+                                        <p className="text-[11px] font-medium text-slate-700 truncate">{at.fileName}</p>
+                                        <p className="text-[10px] text-slate-400">
+                                          {formatBytes(at.sizeBytes)}
+                                          {at.uploadedByName ? ` · by ${at.uploadedByName}` : ''}
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => void downloadFile(r.id, at)}
+                                        title="Download"
+                                        className="w-6 h-6 shrink-0 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                      >
+                                        <Download size={13} />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {active.status !== 'Discharged' && canAdmit && (
+                            <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 cursor-pointer">
+                              {uploadingRecordId === r.id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Paperclip size={12} />
+                              )}
+                              {uploadingRecordId === r.id ? 'Uploading…' : 'Attach image/file'}
+                              <input
+                                type="file"
+                                className="hidden"
+                                disabled={uploadingRecordId === r.id}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (file) void attachFile(r.id, file);
+                                }}
+                              />
+                            </label>
+                          )}
                         </div>
-
-                        {/* Attachments */}
-                        {r.attachments.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {r.attachments.map((at) => (
-                              <button
-                                key={at.id}
-                                type="button"
-                                onClick={() => downloadFile(r.id, at.id)}
-                                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-colors"
-                              >
-                                <Download size={11} /> {at.fileName}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {active.status !== 'Discharged' && canAdmit && (
-                          <label className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 cursor-pointer">
-                            <Paperclip size={12} /> Attach image/file
-                            <input
-                              type="file"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                e.target.value = '';
-                                if (file) void attachFile(r.id, file);
-                              }}
-                            />
-                          </label>
-                        )}
                       </div>
                     ))}
                   </div>
@@ -428,11 +562,14 @@ export default function WardsPage() {
                     <button className="btn-primary shrink-0" disabled={!note.trim() || busy} onClick={() => void addNote()}>Add</button>
                   </div>
                   {active.notes.length > 0 && (
-                    <ul className="space-y-1.5 mt-3">
-                      {active.notes.slice(-5).reverse().map((n, i) => (
-                        <li key={i} className="text-xs text-slate-500">
-                          {n.content}
-                          <span className="block text-[10px] text-slate-400">{formatDateTime(n.recordedAtUtc)}</span>
+                    <ul className="space-y-2 mt-3 border-l-2 border-slate-200 pl-3">
+                      {active.notes.slice(-6).reverse().map((n, i) => (
+                        <li key={i} className="text-xs">
+                          <p className="text-slate-600 leading-relaxed">{n.content}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {formatDateTime(n.recordedAtUtc)}
+                            {n.authorName ? ` · ${n.authorName}` : ''}
+                          </p>
                         </li>
                       ))}
                     </ul>
@@ -482,6 +619,69 @@ export default function WardsPage() {
             void load(page);
           }}
         />
+      )}
+
+      {/* Media preview lightbox */}
+      {preview && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4"
+          onClick={() => { URL.revokeObjectURL(preview.url); setPreview(null); }}
+        >
+          <div className="relative max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-3 py-2 bg-slate-900 rounded-t-lg">
+              <p className="text-xs font-medium text-slate-200 truncate pr-3">{preview.name}</p>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                  title="Download"
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = preview.url;
+                    a.download = preview.name;
+                    a.click();
+                  }}
+                >
+                  <Download size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                  title="Close"
+                  onClick={() => { URL.revokeObjectURL(preview.url); setPreview(null); }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+            <div className="bg-slate-100 rounded-b-lg overflow-auto max-h-[80vh] flex items-center justify-center">
+              {preview.contentType.startsWith('image/') ? (
+                <img src={preview.url} alt={preview.name} className="max-w-full max-h-[80vh] object-contain" />
+              ) : preview.contentType.startsWith('video/') ? (
+                <video src={preview.url} controls className="max-w-full max-h-[80vh]" />
+              ) : preview.contentType.startsWith('audio/') ? (
+                <audio src={preview.url} controls className="w-full p-6" />
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-16 text-slate-500">
+                  <FileText size={36} className="text-slate-300" />
+                  <p className="text-sm">Preview not available for this file type.</p>
+                  <button
+                    type="button"
+                    className="btn-primary !py-1.5 text-xs inline-flex items-center gap-1.5"
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = preview.url;
+                      a.download = preview.name;
+                      a.click();
+                    }}
+                  >
+                    <Download size={13} /> Download {preview.name}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
