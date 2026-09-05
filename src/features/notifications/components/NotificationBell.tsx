@@ -21,6 +21,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   ConsultationRequested: '🩺',
   AppointmentRequested: '📅',
   LabResultReady: '🧪',
+  DiagnosticResultReady: '🩻',
   PrescriptionInitiated: '💊',
   PatientAdmitted: '🛏️',
   PatientDischarged: '🚪',

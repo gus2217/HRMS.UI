@@ -6,6 +6,7 @@ export type NotificationCategory =
   | 'ConsultationRequested'
   | 'AppointmentRequested'
   | 'LabResultReady'
+  | 'DiagnosticResultReady'
   | 'PrescriptionInitiated'
   | 'PatientAdmitted'
   | 'PatientDischarged'

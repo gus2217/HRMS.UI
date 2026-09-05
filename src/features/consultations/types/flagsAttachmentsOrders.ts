@@ -41,9 +41,16 @@ export interface DiagnosticOrderDto {
   status: DiagnosticOrderStatus;
   orderedByUserId: string;
   orderedAtUtc: string;
+  scheduledByUserId: string | null;
+  scheduledAtUtc: string | null;
+  performedByUserId: string | null;
+  performedAtUtc: string | null;
   report: string | null;
   reportedByUserId: string | null;
   reportedAtUtc: string | null;
+  cancelledByUserId: string | null;
+  cancelledAtUtc: string | null;
+  cancellationReason: string | null;
 }
 
 export interface RaiseFlagInput {

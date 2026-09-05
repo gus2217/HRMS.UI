@@ -56,10 +56,13 @@ export const FlagsAttachmentsOrdersService = {
   perform(orderId: string): Promise<DiagnosticOrderDto> {
     return http.post<DiagnosticOrderDto>(`/diagnostic-orders/${orderId}/perform`);
   },
+  schedule(orderId: string): Promise<DiagnosticOrderDto> {
+    return http.post<DiagnosticOrderDto>(`/diagnostic-orders/${orderId}/schedule`);
+  },
   report(orderId: string, report: string): Promise<DiagnosticOrderDto> {
     return http.post<DiagnosticOrderDto>(`/diagnostic-orders/${orderId}/report`, { report });
   },
-  cancel(orderId: string): Promise<DiagnosticOrderDto> {
-    return http.post<DiagnosticOrderDto>(`/diagnostic-orders/${orderId}/cancel`);
+  cancel(orderId: string, reason: string): Promise<DiagnosticOrderDto> {
+    return http.post<DiagnosticOrderDto>(`/diagnostic-orders/${orderId}/cancel`, { reason });
   },
 };

@@ -17,6 +17,7 @@ const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   ConsultationRequested: 'Consultation requested',
   AppointmentRequested: 'Appointment booked',
   LabResultReady: 'Lab results',
+  DiagnosticResultReady: 'Imaging & procedures',
   PrescriptionInitiated: 'Prescriptions',
   PatientAdmitted: 'Patient admitted',
   PatientDischarged: 'Patient discharged',
