@@ -18,6 +18,12 @@ export default defineConfig({
         target: process.env.VITE_API_TARGET ?? 'http://localhost:5099',
         changeOrigin: true,
       },
+      // SignalR notifications hub (WebSocket) — proxy like the REST API.
+      '/hubs': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:5099',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 })
