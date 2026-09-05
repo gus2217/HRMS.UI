@@ -36,6 +36,7 @@ import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasAnyPermission, hasPermission, PERMISSIONS, type Permission } from '@/lib/permissions';
 import { initials } from '@/lib/format';
 import NotificationBell from '@/features/notifications/components/NotificationBell';
+import { useWorkloadBadges } from '@/features/layout/useWorkloadBadges';
 
 interface NavItem {
   to: string;
@@ -74,6 +75,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const visible = NAV_ITEMS.filter((item) => itemVisible(item, permissions));
+  const badges = useWorkloadBadges(visible.map((item) => item.to));
 
   // Current section label for the top bar (longest matching nav route).
   const currentLabel = (() => {
@@ -123,7 +125,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             }
           >
             <span className="flex-shrink-0">{item.icon}</span>
-            <span className="truncate">{item.label}</span>
+            <span className="truncate flex-1">{item.label}</span>
+            {badges[item.to] !== undefined && badges[item.to] > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">
+                {badges[item.to] > 99 ? '99+' : badges[item.to]}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
