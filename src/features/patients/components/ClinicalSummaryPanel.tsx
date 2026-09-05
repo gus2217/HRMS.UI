@@ -118,6 +118,7 @@ export default function ClinicalSummaryPanel({ patientId }: { patientId: string 
                     {formatDate(i.administeredDate)}
                     {i.nextDueDate ? ` · next due ${formatDate(i.nextDueDate)}` : ''}
                     {i.site ? ` · ${i.site}` : ''}
+                    {i.recordedByName ? ` · by ${i.recordedByName}` : ''}
                   </p>
                 </li>
               ))}
@@ -139,7 +140,10 @@ export default function ClinicalSummaryPanel({ patientId }: { patientId: string 
                   <div className="min-w-0">
                     <span className="text-slate-800">{c.description}</span>
                     {c.code && <span className="ml-1.5 font-mono text-[11px] text-indigo-600">{c.code}</span>}
-                    <p className="text-xs text-slate-400">since {formatDate(c.onsetDate)}</p>
+                    <p className="text-xs text-slate-400">
+                      since {formatDate(c.onsetDate)}
+                      {c.recordedByName ? ` · by ${c.recordedByName}` : ''}
+                    </p>
                   </div>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
                     c.status === 'Active' ? 'bg-emerald-100 text-emerald-700'
@@ -204,7 +208,10 @@ function VitalsLatest({ v }: { v: VitalSignDto }) {
       {v.oxygenSaturation != null && <VitalCell label="SpO₂" value={`${v.oxygenSaturation}%`} />}
       {v.weightKg != null && <VitalCell label="Weight" value={`${v.weightKg}kg`} />}
       {v.bmi != null && <VitalCell label="BMI" value={`${v.bmi}`} />}
-      <p className="col-span-2 text-[11px] text-slate-400 mt-1">{formatDateTime(v.recordedAtUtc)}</p>
+      <p className="col-span-2 text-[11px] text-slate-400 mt-1">
+        {formatDateTime(v.recordedAtUtc)}
+        {v.recordedByName ? ` · by ${v.recordedByName}` : ''}
+      </p>
     </div>
   );
 }

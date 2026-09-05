@@ -21,6 +21,8 @@ export interface AllergyDto {
 export interface ConsentDto {
   type: string;
   granted: boolean;
+  recordedByUserId: string;
+  recordedByName: string | null;
   recordedAtUtc: string;
 }
 
@@ -47,6 +49,13 @@ export interface PatientDetail {
   ward: string | null;
   line1: string | null;
   status: string;
+  nationalId: string | null;
+  createdByUserId: string;
+  createdByName: string | null;
+  createdAtUtc: string;
+  modifiedByUserId: string | null;
+  modifiedByName: string | null;
+  modifiedAtUtc: string | null;
   allergies: AllergyDto[];
   consents: ConsentDto[];
   nextOfKin: NextOfKinDto[];

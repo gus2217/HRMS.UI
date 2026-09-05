@@ -18,6 +18,7 @@ export interface VitalSignDto {
   bmi: number | null;
   recordedByUserId: string;
   recordedAtUtc: string;
+  recordedByName: string | null;
 }
 
 export interface ImmunizationDto {
@@ -32,6 +33,7 @@ export interface ImmunizationDto {
   notes: string | null;
   recordedByUserId: string;
   recordedAtUtc: string;
+  recordedByName: string | null;
 }
 
 export interface ConditionDto {
@@ -44,6 +46,7 @@ export interface ConditionDto {
   resolvedDate: string | null;
   recordedByUserId: string;
   recordedAtUtc: string;
+  recordedByName: string | null;
 }
 
 export interface RecordVitalsInput {

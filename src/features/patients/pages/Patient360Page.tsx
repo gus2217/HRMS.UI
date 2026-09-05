@@ -40,7 +40,7 @@ import ClinicalSummaryPanel from '../components/ClinicalSummaryPanel';
 import PatientFlagsBanner from '../components/PatientFlagsBanner';
 import AttachmentsPanel from '../components/AttachmentsPanel';
 import DiagnosticOrdersPanel from '../components/DiagnosticOrdersPanel';
-import { formatDate, ageFromDateOfBirth } from '@/lib/format';
+import { formatDate, formatDateTime, ageFromDateOfBirth } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
@@ -158,12 +158,20 @@ export default function Patient360Page() {
                 <span className="font-mono text-xs text-indigo-600">{patient.patientNumber}</span>
                 <span>{ageFromDateOfBirth(patient.dateOfBirth) ?? '—'} yrs · {patient.gender}</span>
                 <span>{patient.maritalStatus}</span>
+                {patient.nationalId && <span className="font-mono text-xs">ID: {patient.nationalId}</span>}
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                   patient.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
                 }`}>
                   {patient.status}
                 </span>
               </div>
+              <p className="text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-3">
+                {patient.createdByName && <span>Registered by <span className="font-medium text-slate-500">{patient.createdByName}</span></span>}
+                <span>· {formatDateTime(patient.createdAtUtc)}</span>
+                {patient.modifiedByName && (
+                  <span>· Updated by <span className="font-medium text-slate-500">{patient.modifiedByName}</span> {formatDateTime(patient.modifiedAtUtc)}</span>
+                )}
+              </p>
             </div>
           </div>
         </div>
@@ -435,8 +443,13 @@ function MinimalRecord({ patient: initial }: { patient: PatientDetail }) {
           ) : (
             <ul className="space-y-2 text-sm">
               {patient.consents.map((c, i) => (
-                <li key={i} className="flex items-center justify-between">
-                  <span className="text-slate-700">{c.type}</span>
+                <li key={i} className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-slate-700">{c.type}</p>
+                    {c.recordedByName && (
+                      <p className="text-[11px] text-slate-400">by {c.recordedByName} · {formatDateTime(c.recordedAtUtc)}</p>
+                    )}
+                  </div>
                   <span className={`text-xs font-medium ${c.granted ? 'text-emerald-600' : 'text-red-500'}`}>
                     {c.granted ? 'Granted' : 'Withheld'}
                   </span>
