@@ -12,6 +12,7 @@ export type NotificationCategory =
   | 'PatientDischarged'
   | 'PatientTransferred'
   | 'ReferralCreated'
+  | 'InvoiceIssued'
   | 'System';
 
 export interface NotificationPreferenceDto {
@@ -27,6 +28,8 @@ export interface UserNotificationDto {
   message: string;
   entityType: string;
   entityId: string | null;
+  /** Frontend route to open when the recipient acts on this notification. */
+  link: string | null;
   isRead: boolean;
   createdAtUtc: string;
 }

@@ -23,6 +23,7 @@ const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   PatientDischarged: 'Patient discharged',
   PatientTransferred: 'Patient transferred',
   ReferralCreated: 'Referrals',
+  InvoiceIssued: 'Bills & invoices',
   System: 'System',
 };
 

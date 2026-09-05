@@ -9,8 +9,9 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, CheckCheck, Loader2, Settings2 } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, Settings2, ArrowUpRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { NotificationService } from '../services/notificationService';
 import { subscribeToNotifications } from '../services/notificationHub';
 import type { UserNotificationDto } from '../types/notifications';
@@ -27,7 +28,19 @@ const CATEGORY_EMOJI: Record<string, string> = {
   PatientDischarged: '🚪',
   PatientTransferred: '🔀',
   ReferralCreated: '🔀',
+  InvoiceIssued: '🧾',
   System: '🔔',
+};
+
+/** Feature the notification opens when clicked (matches backend `link`). */
+const FEATURE_TAGS: Record<string, string> = {
+  '/queue': 'Queue',
+  '/lab': 'Laboratory',
+  '/pharmacy': 'Pharmacy',
+  '/billing': 'Billing',
+  '/wards': 'Wards',
+  '/appointments': 'Appointments',
+  '/patients': 'Patient record',
 };
 
 export default function NotificationBell() {
@@ -38,6 +51,7 @@ export default function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   const refresh = useCallback(async () => {
     try {
@@ -96,6 +110,19 @@ export default function NotificationBell() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to mark read');
     }
+  };
+
+  /** Open the notification: mark read, then jump to the feature it belongs to. */
+  const openNotification = async (n: UserNotificationDto) => {
+    setOpen(false);
+    if (!n.isRead) await markRead(n.id);
+    if (n.link) navigate(n.link);
+  };
+
+  const tagFor = (n: UserNotificationDto): string | null => {
+    if (!n.link) return null;
+    const prefix = Object.keys(FEATURE_TAGS).find((k) => n.link!.startsWith(k));
+    return prefix ? FEATURE_TAGS[prefix] : null;
   };
 
   const markAll = async () => {
@@ -167,24 +194,34 @@ export default function NotificationBell() {
               ) : items.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-10">No notifications yet.</p>
               ) : (
-                items.map((n) => (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={() => void markRead(n.id)}
-                    className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${n.isRead ? 'opacity-60' : ''}`}
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <span className="text-base leading-none mt-0.5">{CATEGORY_EMOJI[n.category] ?? '🔔'}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-900">{n.title}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{n.message}</p>
-                        <p className="text-[11px] text-slate-400 mt-1">{formatDateTime(n.createdAtUtc)}</p>
+                items.map((n) => {
+                  const tag = tagFor(n);
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => void openNotification(n)}
+                      className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${n.isRead ? 'opacity-60' : ''}`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span className="text-base leading-none mt-0.5">{CATEGORY_EMOJI[n.category] ?? '🔔'}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                            {n.title}
+                            {tag && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 inline-flex items-center gap-0.5">
+                                {tag} <ArrowUpRight size={9} />
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">{n.message}</p>
+                          <p className="text-[11px] text-slate-400 mt-1">{formatDateTime(n.createdAtUtc)}</p>
+                        </div>
+                        {!n.isRead && <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1.5" />}
                       </div>
-                      {!n.isRead && <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1.5" />}
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  );
+                })
               )}
             </div>
           )}

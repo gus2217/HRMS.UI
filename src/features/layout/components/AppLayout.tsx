@@ -14,7 +14,7 @@
 // ============================================================
 
 import { useState, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -70,9 +70,18 @@ function itemVisible(item: NavItem, permissions: Set<Permission>): boolean {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, permissions, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const visible = NAV_ITEMS.filter((item) => itemVisible(item, permissions));
+
+  // Current section label for the top bar (longest matching nav route).
+  const currentLabel = (() => {
+    const match = visible
+      .filter((i) => i.to !== '/' && (location.pathname === i.to || location.pathname.startsWith(`${i.to}/`)))
+      .sort((a, b) => b.to.length - a.to.length)[0];
+    return match?.label ?? 'Jacana HRMS';
+  })();
 
   const handleLogout = async () => {
     logout();
@@ -129,7 +138,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <p className="text-sm font-semibold text-slate-900 truncate">{user?.fullName}</p>
             <p className="text-[11px] text-slate-400 truncate">{user?.roles.join(', ')}</p>
           </div>
-          <NotificationBell />
         </div>
         <button
           onClick={handleLogout}
@@ -164,12 +172,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile header */}
-        <header className="flex items-center gap-3 px-5 py-4 border-b border-slate-200 bg-white lg:hidden flex-shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="text-slate-500" aria-label="Open menu">
+        {/* Top bar (bell lives here, not the sidebar) */}
+        <header className="flex items-center gap-3 px-4 lg:px-6 py-3.5 border-b border-slate-200 bg-white flex-shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-500" aria-label="Open menu">
             <Menu size={20} />
           </button>
-          <p className="text-sm font-bold text-slate-900">Jacana HRMS</p>
+          <p className="text-sm font-bold text-slate-900 lg:hidden">Jacana HRMS</p>
+          <p className="hidden lg:block text-sm font-semibold text-slate-800">{currentLabel}</p>
+          <div className="flex-1" />
+          <NotificationBell />
         </header>
 
         <main className="flex-1 overflow-y-auto">{children}</main>
