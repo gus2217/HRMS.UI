@@ -76,11 +76,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const visible = NAV_ITEMS.filter((item) => itemVisible(item, permissions));
 
-  // Clinicians (Doctor/Nurse) don't get a standalone Queue nav item — the queue
-  // lives inside the sections (Appointments → today's queue, Consultations →
-  // waiting queue). Reception still needs the Queue page to queue patients.
-  const isClinician = (user?.roles ?? []).some((r) => r === 'Doctor' || r === 'Nurse');
-  const navItems = isClinician ? visible.filter((item) => item.to !== '/queue') : visible;
+  // The Queue tab is receptionist-only. Every other role works their queue
+  // from inside the sections (Appointments → today's queue, Consultations →
+  // waiting queue) and never sees the standalone Queue nav item.
+  const roles = user?.roles ?? [];
+  const navItems = visible.filter((item) =>
+    item.to !== '/queue' || roles.includes('Receptionist'),
+  );
   const badges = useWorkloadBadges(navItems.map((item) => item.to));
 
   // Current section label for the top bar (longest matching nav route).
