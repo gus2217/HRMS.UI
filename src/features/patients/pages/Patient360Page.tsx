@@ -23,6 +23,7 @@ import toast from 'react-hot-toast';
 import {
   ArrowLeft, Loader2, Phone, MapPin, Stethoscope,
   Users, Activity, CalendarPlus, ScanLine, Flag, GraduationCap, Briefcase,
+  ShieldAlert, Paperclip, History,
 } from 'lucide-react';
 import { PatientService } from '../services/patientService';
 import { ConsultationService } from '@/features/consultations/services/consultationService';
@@ -98,6 +99,7 @@ export default function Patient360Page() {
   const [quick, setQuick] = useState<'vitals' | 'flag' | 'imaging' | 'book' | null>(null);
   const [starting, setStarting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [tab, setTab] = useState<'overview' | 'clinical' | 'diagnostics' | 'attachments' | 'history'>('overview');
 
   const fullName = patient
     ? [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' ')
@@ -138,6 +140,11 @@ export default function Patient360Page() {
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isClinical, reloadKey]);
+
+  // Reset section tabs when opening another patient's record.
+  useEffect(() => {
+    setTab('overview');
+  }, [id]);
 
   /** Quick action: start a consultation and jump straight into the consult workspace. */
   const quickConsult = async () => {
@@ -301,19 +308,45 @@ export default function Patient360Page() {
       </div>
 
       {isClinical ? (
-        <>
+        <div className="space-y-5">
+          {/* Section tabs — keeps the record tidy, one focus at a time */}
+          <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
+            {[
+              { id: 'overview', label: 'Overview', icon: <ShieldAlert size={14} /> },
+              { id: 'clinical', label: 'Clinical summary', icon: <Activity size={14} /> },
+              { id: 'diagnostics', label: 'Diagnostics', icon: <ScanLine size={14} /> },
+              { id: 'attachments', label: 'Attachments', icon: <Paperclip size={14} /> },
+              { id: 'history', label: 'Visits & history', icon: <History size={14} /> },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id as typeof tab)}
+                className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                  tab === t.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Flags banner stays visible across sections — safety-critical */}
           <div className="space-y-2">
             <PatientFlagsBanner patientId={patient.id} />
           </div>
-          {/* Allergies + consents — clinical records managed by Clinical.Consult roles */}
-          <div className="grid lg:grid-cols-2 gap-6">
-            <AllergiesConsentsPanel patient={patient} onPatientUpdated={setPatient} />
-          </div>
-          <ClinicalSummaryPanel patientId={patient.id} />
-          <DiagnosticOrdersPanel patientId={patient.id} />
-          <AttachmentsPanel patientId={patient.id} />
-          <MedicalRecordTimeline record={record} visits={visits} />
-        </>
+
+          {tab === 'overview' && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              <AllergiesConsentsPanel patient={patient} onPatientUpdated={setPatient} />
+            </div>
+          )}
+          {tab === 'clinical' && <ClinicalSummaryPanel patientId={patient.id} />}
+          {tab === 'diagnostics' && <DiagnosticOrdersPanel patientId={patient.id} />}
+          {tab === 'attachments' && <AttachmentsPanel patientId={patient.id} />}
+          {tab === 'history' && <MedicalRecordTimeline record={record} visits={visits} />}
+        </div>
       ) : (
         <MinimalRecord patient={patient} />
       )}

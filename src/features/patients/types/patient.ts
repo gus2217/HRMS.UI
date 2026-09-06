@@ -26,6 +26,24 @@ export interface ConsentDto {
   recordedAtUtc: string;
 }
 
+/**
+ * Consent types — values mirror the backend ConsentType enum exactly
+ * (PatientRegistration.Domain: TreatmentConsent, DataSharingConsent,
+ * ShaDataSharingConsent, ResearchConsent). The API binds enums by name,
+ * so the UI must send these canonical values (sending friendly labels
+ * such as "Treatment" causes a 400).
+ */
+export const CONSENT_TYPE_LABELS: Record<string, string> = {
+  TreatmentConsent: 'Treatment consent',
+  DataSharingConsent: 'Data sharing consent',
+  ShaDataSharingConsent: 'SHA data sharing consent',
+  ResearchConsent: 'Research consent',
+};
+
+export function consentTypeLabel(type: string): string {
+  return CONSENT_TYPE_LABELS[type] ?? type;
+}
+
 export interface NextOfKinDto {
   fullName: string;
   relationship: string;

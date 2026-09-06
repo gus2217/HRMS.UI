@@ -38,7 +38,7 @@ import { InventoryService } from '@/features/inventory/services/inventoryService
 import { BillingService } from '@/features/billing/services/billingService';
 import { InpatientService } from '@/features/inpatient/services/inpatientService';
 import type { ConsultationDetail, ClinicalDocumentationDto, PatientMedicalRecord } from '../types/consultation';
-import type { PatientDetail } from '@/features/patients/types/patient';
+import { consentTypeLabel, type PatientDetail } from '@/features/patients/types/patient';
 import type { DrugCatalogDto } from '@/features/inventory/types/inventory';
 import type { InvoiceDetail } from '@/features/billing/types/billing';
 import type { AdmissionDetail, WardDto } from '@/features/inpatient/types/inpatient';
@@ -275,7 +275,7 @@ function MedicalRecordPanel({ patientId }: { patientId?: string; patientName?: s
           <ul className="space-y-1.5 text-sm">
             {patient.consents.map((c, i) => (
               <li key={i} className="flex items-center justify-between">
-                <span className="text-slate-700">{c.type}</span>
+                <span className="text-slate-700">{consentTypeLabel(c.type)}</span>
                 <span className={`text-xs font-medium ${c.granted ? 'text-emerald-600' : 'text-red-500'}`}>
                   {c.granted ? 'Granted' : 'Withheld'}
                 </span>

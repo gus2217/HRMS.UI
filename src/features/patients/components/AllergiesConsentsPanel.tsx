@@ -14,7 +14,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { ShieldAlert, FileText, Loader2 } from 'lucide-react';
 import { PatientService } from '../services/patientService';
-import type { PatientDetail } from '../types/patient';
+import { CONSENT_TYPE_LABELS, consentTypeLabel, type PatientDetail } from '../types/patient';
 import { formatDateTime } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
@@ -32,7 +32,7 @@ export default function AllergiesConsentsPanel({ patient, onPatientUpdated }: Al
   const [allergyForm, setAllergyForm] = useState({ substance: '', severity: 'Mild', notes: '' });
   const [allergySaving, setAllergySaving] = useState(false);
   const [showConsentForm, setShowConsentForm] = useState(false);
-  const [consentForm, setConsentForm] = useState({ type: 'Treatment', granted: true });
+  const [consentForm, setConsentForm] = useState({ type: 'TreatmentConsent', granted: true });
   const [consentSaving, setConsentSaving] = useState(false);
 
   const saveAllergy = async () => {
@@ -190,10 +190,9 @@ export default function AllergiesConsentsPanel({ patient, onPatientUpdated }: Al
                 value={consentForm.type}
                 onChange={(e) => setConsentForm((f) => ({ ...f, type: e.target.value }))}
               >
-                <option value="Treatment">Treatment</option>
-                <option value="Procedure">Procedure</option>
-                <option value="DataSharing">Data sharing</option>
-                <option value="Research">Research</option>
+                {Object.entries(CONSENT_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
               <select
                 className="input text-sm"
@@ -222,7 +221,7 @@ export default function AllergiesConsentsPanel({ patient, onPatientUpdated }: Al
             {patient.consents.map((c, i) => (
               <li key={i} className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-slate-700">{c.type}</p>
+                  <p className="text-slate-700">{consentTypeLabel(c.type)}</p>
                   {c.recordedByName && (
                     <p className="text-[11px] text-slate-400">by {c.recordedByName} · {formatDateTime(c.recordedAtUtc)}</p>
                   )}
