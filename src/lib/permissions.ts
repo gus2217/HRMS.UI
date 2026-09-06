@@ -72,6 +72,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     PERMISSIONS.APPOINTMENT_CREATE,
     PERMISSIONS.APPOINTMENT_VIEW,
     PERMISSIONS.APPOINTMENT_APPROVE,
+    PERMISSIONS.BILLING_VIEW, // live bill in consult workspace — prescribe within the patient's budget
   ],
   Nurse: [
     PERMISSIONS.PATIENT_VIEW,
