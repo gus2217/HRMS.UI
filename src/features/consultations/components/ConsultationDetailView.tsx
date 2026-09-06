@@ -133,7 +133,13 @@ export default function ConsultationDetailView({ consultation, patientId, patien
       )}
 
       {tab === 'appointments' && (
-        <PatientAppointmentsPanel patientId={patientId} />
+        <PatientAppointmentsPanel
+          patientId={patientId}
+          patientName={patientName}
+          patientNumber={patientNumber}
+          consultation={consultation}
+          onConsultationChanged={(c) => { if (c) onChanged(c); }}
+        />
       )}
     </div>
   );

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Loader2, Plus, Stethoscope, Inbox, ArrowLeft, UserRound, Phone, CalendarDays,
@@ -37,6 +38,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function ConsultationsPage() {
   const { permissions } = useAuth();
+  const location = useLocation();
   const [rows, setRows] = useState<ConsultationRow[]>([]);
   const [latestPatients, setLatestPatients] = useState<PatientSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -118,6 +120,34 @@ export default function ConsultationsPage() {
       setActiveLoading(false);
     }
   };
+
+  // Deep-link support: /consultations opened with router state { openConsultation }
+  // (quick "Consult" from the patients list / patient record) auto-opens the workspace.
+  const handledDeepLink = useRef(false);
+  useEffect(() => {
+    if (handledDeepLink.current) return;
+    const st = location.state as {
+      openConsultation?: ConsultationDetail;
+      patientName?: string;
+      patientNumber?: string;
+    } | null;
+    if (st?.openConsultation) {
+      handledDeepLink.current = true;
+      const c = st.openConsultation;
+      void openConsultation({
+        id: c.id,
+        patientId: c.patientId,
+        patientName: st.patientName ?? '',
+        patientNumber: st.patientNumber ?? '',
+        clinicianUserId: c.clinicianUserId,
+        status: c.status,
+        startedAtUtc: c.startedAtUtc,
+        completedAtUtc: c.completedAtUtc,
+        detail: c,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectStatus = (s: string) => {
     setStatus(s);

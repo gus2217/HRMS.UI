@@ -14,9 +14,11 @@ import type {
 export interface RegisterPatientInput {
   firstName: string;
   lastName: string;
+  middleName?: string | null;
   dateOfBirth: string;
   gender: string;
   phone: string;
+  alternativePhone?: string | null;
   nationalId?: string | null;
   insuranceType: string;
   insuranceNumber?: string | null;
@@ -25,6 +27,10 @@ export interface RegisterPatientInput {
   subCounty?: string | null;
   ward?: string | null;
   line1?: string | null;
+  village?: string | null;
+  landmark?: string | null;
+  educationLevel?: string | null;
+  occupation?: string | null;
 }
 
 export const PatientService = {

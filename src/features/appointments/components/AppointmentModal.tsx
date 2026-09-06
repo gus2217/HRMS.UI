@@ -21,6 +21,8 @@ import { ageFromDateOfBirth, formatDateTime } from '@/lib/format';
 
 interface Props {
   patient?: PatientSummary | null;
+  /** When booking from inside an open consultation, pre-links the appointment to it. */
+  linkConsultation?: { id: string; label: string } | null;
   onClose: () => void;
   onCreated: (appts: Appointment[]) => void;
 }
@@ -41,7 +43,7 @@ const RECURRENCES = [
   { value: 'Monthly', label: 'Monthly' },
 ];
 
-export default function AppointmentModal({ patient: presetPatient, onClose, onCreated }: Props) {
+export default function AppointmentModal({ patient: presetPatient, linkConsultation, onClose, onCreated }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PatientSummary[]>([]);
   const [selected, setSelected] = useState<PatientSummary | null>(presetPatient ?? null);
@@ -89,6 +91,15 @@ export default function AppointmentModal({ patient: presetPatient, onClose, onCr
       .catch(() => { if (mounted) setPriorVisits([]); });
     return () => { mounted = false; };
   }, [selected, type]);
+
+  // When booking from inside an open consultation, default the follow-up link to
+  // that consultation so the appointment continues the same episode of care.
+  useEffect(() => {
+    if (linkConsultation && selected && ['FollowUp', 'CheckUp', 'Review'].includes(type)) {
+      setPreviousConsultationId(linkConsultation.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkConsultation?.id, selected?.id, type]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -184,7 +195,23 @@ export default function AppointmentModal({ patient: presetPatient, onClose, onCr
               <p className="text-xs font-semibold text-violet-700 flex items-center gap-1.5 mb-2">
                 <History size={12} /> Follow-up of
               </p>
-              {priorVisits.length === 0 ? (
+              {linkConsultation && (
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-violet-100/70 border border-violet-200 px-2.5 py-1.5 text-xs">
+                  <span className="font-medium text-violet-800">{linkConsultation.label}</span>
+                  {previousConsultationId === linkConsultation.id ? (
+                    <span className="shrink-0 text-[10px] font-semibold text-violet-700">Linked ✓</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="shrink-0 text-violet-700 underline"
+                      onClick={() => setPreviousConsultationId(linkConsultation.id)}
+                    >
+                      Link to this consultation
+                    </button>
+                  )}
+                </div>
+              )}
+              {priorVisits.length === 0 && !linkConsultation ? (
                 <p className="text-xs text-violet-500">No completed visits on record — this will be a standalone {type.toLowerCase()}.</p>
               ) : (
                 <select
@@ -200,6 +227,11 @@ export default function AppointmentModal({ patient: presetPatient, onClose, onCr
                     </option>
                   ))}
                 </select>
+              )}
+              {linkConsultation && previousConsultationId === linkConsultation.id && (
+                <p className="text-[11px] text-violet-600 mt-1.5">
+                  When this appointment starts, the new visit will continue this consultation's notes and record.
+                </p>
               )}
             </div>
           )}

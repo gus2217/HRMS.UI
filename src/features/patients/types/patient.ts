@@ -36,6 +36,7 @@ export interface PatientDetail {
   id: string;
   patientNumber: string;
   firstName: string;
+  middleName: string | null;
   lastName: string;
   dateOfBirth: string;
   gender: string;
@@ -48,6 +49,11 @@ export interface PatientDetail {
   subCounty: string | null;
   ward: string | null;
   line1: string | null;
+  village: string | null;
+  landmark: string | null;
+  educationLevel: string | null;
+  occupation: string | null;
+  alternativePhone: string | null;
   status: string;
   nationalId: string | null;
   createdByUserId: string;

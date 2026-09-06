@@ -28,12 +28,13 @@ export const AppointmentService = {
     });
   },
 
-  list(filters: { clinicType?: string; status?: string; fromUtc?: string; toUtc?: string; pageNumber?: number; pageSize?: number } = {}): Promise<PagedResult<Appointment>> {
+  list(filters: { clinicType?: string; status?: string; fromUtc?: string; toUtc?: string; patientId?: string; pageNumber?: number; pageSize?: number } = {}): Promise<PagedResult<Appointment>> {
     const q = new URLSearchParams({ pageNumber: '1', pageSize: '100' });
     if (filters.clinicType) q.set('clinicType', filters.clinicType);
     if (filters.status) q.set('status', filters.status);
     if (filters.fromUtc) q.set('fromUtc', filters.fromUtc);
     if (filters.toUtc) q.set('toUtc', filters.toUtc);
+    if (filters.patientId) q.set('patientId', filters.patientId);
     return http.get<PagedResult<Appointment>>(`/appointments?${q.toString()}`);
   },
 

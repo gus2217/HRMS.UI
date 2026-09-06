@@ -2,30 +2,27 @@
 // Patient360Page.tsx
 // Location: src/features/patients/pages/Patient360Page.tsx
 //
-// The patient's medical record.
+// The patient's medical record — an elite, clinician-first workspace.
 //
 // For clinicians (Clinical.View — Doctor, Nurse, Administrator):
-//   a full per-visit timeline — each consultation shows triage,
-//   structured documentation (CC → HPI → PMSHX → ROS → Exam),
-//   diagnoses, DATED notes, lab results and prescriptions with
-//   dispense status — so care can be followed visit by visit.
+//   a rich identity header with KenyaEMR-standard demographics, a quick
+//   action toolbar (Consult / Triage / Imaging / Book / Flag), the flags
+//   banner, clinical summary, diagnostic orders, attachments and the full
+//   per-visit medical timeline — so care can be followed visit by visit
+//   without leaving the patient.
 //
-// For everyone else (lab, pharmacy, receptionist, accountant,
-// records, IT): minimal — demographics, allergies, consents,
-// next of kin only. No clinical content. The backend also masks
-// confidential fields for roles without Patient.ConfidentialView.
-//
-// The per-visit timeline itself lives in the shared
-// MedicalRecordTimeline component so the consultation Record tab
-// renders the exact same full record.
+// For everyone else (lab, pharmacy, receptionist, accountant, records, IT):
+//   minimal — demographics, allergies, consents, next of kin only. The
+//   backend also masks confidential fields for roles without
+//   Patient.ConfidentialView.
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, Loader2, Phone, MapPin, ShieldAlert, FileText, Stethoscope,
-  Users,
+  Users, Activity, CalendarPlus, ScanLine, Flag, GraduationCap, Briefcase,
 } from 'lucide-react';
 import { PatientService } from '../services/patientService';
 import { ConsultationService } from '@/features/consultations/services/consultationService';
@@ -40,6 +37,10 @@ import ClinicalSummaryPanel from '../components/ClinicalSummaryPanel';
 import PatientFlagsBanner from '../components/PatientFlagsBanner';
 import AttachmentsPanel from '../components/AttachmentsPanel';
 import DiagnosticOrdersPanel from '../components/DiagnosticOrdersPanel';
+import RecordVitalsModal from '../components/RecordVitalsModal';
+import RaiseFlagModal from '../components/RaiseFlagModal';
+import CreateDiagnosticOrderModal from '../components/CreateDiagnosticOrderModal';
+import AppointmentModal from '@/features/appointments/components/AppointmentModal';
 import { formatDate, formatDateTime, ageFromDateOfBirth } from '@/lib/format';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
@@ -72,20 +73,40 @@ const CLINIC_LABELS: Record<string, string> = {
   AdolescentYouthFriendly: 'Adolescent & youth friendly',
 };
 
+const EDUCATION_LABELS: Record<string, string> = {
+  None: 'No formal education',
+  Primary: 'Primary',
+  Secondary: 'Secondary',
+  Tertiary: 'Tertiary',
+  University: 'University',
+  Other: 'Other',
+};
+
 export default function Patient360Page() {
   const { id } = useParams<{ id: string }>();
-  const { permissions } = useAuth();
+  const { permissions, user } = useAuth();
+  const navigate = useNavigate();
   const isClinical = hasPermission(permissions, PERMISSIONS.CLINICAL_VIEW);
+  const canConsult = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
+  const canBook = hasPermission(permissions, PERMISSIONS.APPOINTMENT_CREATE);
 
   const [patient, setPatient] = useState<PatientDetail | null>(null);
   const [record, setRecord] = useState<PatientMedicalRecord | null>(null);
   const [visits, setVisits] = useState<EnrichedVisit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [quick, setQuick] = useState<'vitals' | 'flag' | 'imaging' | 'book' | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const fullName = patient
+    ? [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' ')
+    : '';
 
   useEffect(() => {
     if (!id) return;
     let mounted = true;
-    const load = async () => {
+    setLoading(true);
+    (async () => {
       try {
         const [p, rec] = await Promise.all([
           PatientService.detail(id),
@@ -112,12 +133,31 @@ export default function Patient360Page() {
       } finally {
         if (mounted) setLoading(false);
       }
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, [id, isClinical]);
+    })();
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isClinical, reloadKey]);
+
+  /** Quick action: start a consultation and jump straight into the consult workspace. */
+  const quickConsult = async () => {
+    if (!patient || !user?.id) return;
+    if (!canConsult) {
+      toast.error('You do not have permission to start consultations.');
+      return;
+    }
+    setStarting(true);
+    try {
+      const c = await ConsultationService.start(patient.id, user.id);
+      toast.success(`Consultation started for ${fullName}`);
+      navigate('/consultations', {
+        state: { openConsultation: c, patientName: fullName, patientNumber: patient.patientNumber },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to start consultation');
+    } finally {
+      setStarting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -145,68 +185,125 @@ export default function Patient360Page() {
         <ArrowLeft size={14} /> Patients
       </Link>
 
-      {/* Header card */}
-      <div className="card p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <span className="w-14 h-14 rounded-full bg-indigo-600/10 text-indigo-700 flex items-center justify-center text-lg font-bold">
-              {patient.firstName[0]}{patient.lastName[0]}
-            </span>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">{patient.firstName} {patient.lastName}</h1>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-slate-500">
-                <span className="font-mono text-xs text-indigo-600">{patient.patientNumber}</span>
-                <span>{ageFromDateOfBirth(patient.dateOfBirth) ?? '—'} yrs · {patient.gender}</span>
-                <span>{patient.maritalStatus}</span>
-                {patient.nationalId && <span className="font-mono text-xs">ID: {patient.nationalId}</span>}
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  patient.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {patient.status}
+      {/* ── Identity header ─────────────────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm">
+        <div className="h-1.5 bg-gradient-to-r from-indigo-600 via-violet-500 to-indigo-400" />
+        <div className="p-5 lg:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="relative shrink-0">
+                <span className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 text-white flex items-center justify-center text-xl font-bold shadow-md">
+                  {patient.firstName[0]}{patient.lastName[0]}
                 </span>
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${
+                    patient.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-300'
+                  }`}
+                  title={patient.status}
+                />
               </div>
-              <p className="text-xs text-slate-400 mt-1.5 flex flex-wrap items-center gap-x-3">
-                {patient.createdByName && <span>Registered by <span className="font-medium text-slate-500">{patient.createdByName}</span></span>}
-                <span>· {formatDateTime(patient.createdAtUtc)}</span>
-                {patient.modifiedByName && (
-                  <span>· Updated by <span className="font-medium text-slate-500">{patient.modifiedByName}</span> {formatDateTime(patient.modifiedAtUtc)}</span>
-                )}
-              </p>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{fullName}</h1>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    patient.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {patient.status}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-sm text-slate-500">
+                  <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold">
+                    {patient.patientNumber}
+                  </span>
+                  <span>{ageFromDateOfBirth(patient.dateOfBirth) ?? '—'} yrs · {patient.gender}</span>
+                  <span>{patient.maritalStatus}</span>
+                  {patient.nationalId && <span className="font-mono text-xs">ID: {patient.nationalId}</span>}
+                </div>
+                <p className="text-xs text-slate-400 mt-2 flex flex-wrap items-center gap-x-3">
+                  {patient.createdByName && (
+                    <span>Registered by <span className="font-medium text-slate-500">{patient.createdByName}</span></span>
+                  )}
+                  <span>· {formatDateTime(patient.createdAtUtc)}</span>
+                  {patient.modifiedByName && (
+                    <span>· Updated by <span className="font-medium text-slate-500">{patient.modifiedByName}</span> {formatDateTime(patient.modifiedAtUtc)}</span>
+                  )}
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-5 pt-5 border-t border-slate-200 text-sm">
-          <div>
-            <p className="text-xs text-slate-400 mb-1 flex items-center gap-1.5"><Phone size={12} /> Phone</p>
-            <p className="text-slate-700">{patient.phone ?? '—'}</p>
+            {/* Quick actions — busy-clinician toolbar */}
+            {isClinical && (
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <button
+                  className="btn-primary text-xs"
+                  onClick={() => void quickConsult()}
+                  disabled={starting || !canConsult}
+                  title="Start a consultation and open the clinical workspace"
+                >
+                  {starting ? <Loader2 size={13} className="animate-spin" /> : <Stethoscope size={13} />}
+                  Consult
+                </button>
+                {canConsult && (
+                  <button
+                    className="btn-ghost text-xs"
+                    onClick={() => setQuick('vitals')}
+                    title="Record triage vitals (temp, BP, pulse…)"
+                  >
+                    <Activity size={13} /> Triage
+                  </button>
+                )}
+                {canConsult && (
+                  <button
+                    className="btn-ghost text-xs"
+                    onClick={() => setQuick('imaging')}
+                    title="Order imaging / procedure"
+                  >
+                    <ScanLine size={13} /> Imaging
+                  </button>
+                )}
+                {canBook && (
+                  <button className="btn-ghost text-xs" onClick={() => setQuick('book')} title="Book an appointment for this patient">
+                    <CalendarPlus size={13} /> Book
+                  </button>
+                )}
+                {canConsult && (
+                  <button className="btn-ghost text-xs" onClick={() => setQuick('flag')} title="Raise a patient flag (allergy, warning…)">
+                    <Flag size={13} /> Flag
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-          <div>
-            <p className="text-xs text-slate-400 mb-1 flex items-center gap-1.5"><MapPin size={12} /> Address</p>
-            <p className="text-slate-700">{patient.county}{patient.subCounty ? `, ${patient.subCounty}` : ''}{patient.ward ? `, ${patient.ward}` : ''}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 mb-1">Insurance</p>
-            <p className="text-slate-700">
-              {patient.insuranceNumber
+
+          {/* Contact + KenyaEMR demographic grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mt-6 pt-5 border-t border-slate-100 text-sm">
+            <Info label="Phone" value={patient.phone} icon={<Phone size={12} />} />
+            <Info label="Alt. phone" value={patient.alternativePhone} />
+            <Info
+              label="Address"
+              value={[patient.county, patient.subCounty, patient.ward, patient.village, patient.landmark]
+                .filter(Boolean).join(', ')}
+              icon={<MapPin size={12} />}
+            />
+            <Info label="Education" value={patient.educationLevel ? (EDUCATION_LABELS[patient.educationLevel] ?? patient.educationLevel) : undefined} icon={<GraduationCap size={12} />} />
+            <Info label="Occupation" value={patient.occupation ?? undefined} icon={<Briefcase size={12} />} />
+            <Info
+              label="Insurance"
+              value={patient.insuranceNumber
                 ? `${INSURANCE_LABELS[patient.insuranceType] ?? patient.insuranceType} · ${patient.insuranceNumber}`
                 : INSURANCE_LABELS[patient.insuranceType] ?? patient.insuranceType}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 mb-1">Clinic</p>
-            <p className="text-slate-700">{CLINIC_LABELS[patient.clinicType] ?? patient.clinicType}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 mb-1">Date of birth</p>
-            <p className="text-slate-700">{formatDate(patient.dateOfBirth)}</p>
+            />
+            <Info label="Clinic" value={CLINIC_LABELS[patient.clinicType] ?? patient.clinicType} />
+            <Info label="Date of birth" value={formatDate(patient.dateOfBirth)} />
           </div>
         </div>
       </div>
 
       {isClinical ? (
         <>
-          <PatientFlagsBanner patientId={patient.id} />
+          <div className="space-y-2">
+            <PatientFlagsBanner patientId={patient.id} />
+          </div>
           <ClinicalSummaryPanel patientId={patient.id} />
           <DiagnosticOrdersPanel patientId={patient.id} />
           <AttachmentsPanel patientId={patient.id} />
@@ -215,6 +312,42 @@ export default function Patient360Page() {
       ) : (
         <MinimalRecord patient={patient} />
       )}
+
+      {/* Patient-scoped quick-action modals */}
+      {quick === 'vitals' && (
+        <RecordVitalsModal patientId={patient.id} onClose={() => setQuick(null)} onSaved={() => { setQuick(null); setReloadKey((k) => k + 1); }} />
+      )}
+      {quick === 'flag' && (
+        <RaiseFlagModal patientId={patient.id} onClose={() => setQuick(null)} onSaved={() => { setQuick(null); setReloadKey((k) => k + 1); }} />
+      )}
+      {quick === 'imaging' && (
+        <CreateDiagnosticOrderModal patientId={patient.id} onClose={() => setQuick(null)} onSaved={() => { setQuick(null); setReloadKey((k) => k + 1); }} />
+      )}
+      {quick === 'book' && (
+        <AppointmentModal
+          patient={{
+            id: patient.id,
+            patientNumber: patient.patientNumber,
+            fullName,
+            dateOfBirth: patient.dateOfBirth,
+            phone: patient.phone,
+            lastVisitDate: null,
+          }}
+          onClose={() => setQuick(null)}
+          onCreated={() => setQuick(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function Info({ label, value, icon }: { label: string; value?: string | null; icon?: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] text-slate-400 mb-1 flex items-center gap-1.5 uppercase tracking-wide">
+        {icon}{label}
+      </p>
+      <p className="text-slate-700 font-medium truncate" title={value ?? ''}>{value ?? '—'}</p>
     </div>
   );
 }
@@ -231,6 +364,8 @@ function MinimalRecord({ patient: initial }: { patient: PatientDetail }) {
   const [showConsentForm, setShowConsentForm] = useState(false);
   const [consentForm, setConsentForm] = useState({ type: 'Treatment', granted: true });
   const [consentSaving, setConsentSaving] = useState(false);
+
+  const fullName = [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' ');
 
   const saveAllergy = async () => {
     if (!patient.id || !allergyForm.substance.trim()) return;
@@ -288,6 +423,10 @@ function MinimalRecord({ patient: initial }: { patient: PatientDetail }) {
           Full medical records are available to clinicians (doctors, nurses and administrators).
         </p>
         <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
+          <div>
+            <p className="text-xs text-slate-400">Full name</p>
+            <p className="text-slate-700 font-medium mt-0.5">{fullName}</p>
+          </div>
           <div>
             <p className="text-xs text-slate-400">Phone</p>
             <p className="text-slate-700 font-medium mt-0.5">{patient.phone ?? '—'}</p>

@@ -61,10 +61,12 @@ const insuranceNumberLabel = (type: string) =>
 export default function RegisterPatientModal({ onClose, onCreated }: Props) {
   const [form, setForm] = useState({
     firstName: '',
+    middleName: '',
     lastName: '',
     dateOfBirth: '',
     gender: 'Female',
     phone: '',
+    alternativePhone: '',
     nationalId: '',
     insuranceType: 'Sha',
     insuranceNumber: '',
@@ -73,6 +75,10 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
     subCounty: '',
     ward: '',
     line1: '',
+    village: '',
+    landmark: '',
+    educationLevel: '',
+    occupation: '',
   });
   const [saving, setSaving] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
@@ -132,9 +138,11 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
       const res: RegisterPatientResponse = await PatientService.register({
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
+        middleName: form.middleName.trim() || null,
         dateOfBirth: form.dateOfBirth, // yyyy-MM-dd — matches the backend DateOnly binding
         gender: form.gender,
         phone: form.phone.trim(),
+        alternativePhone: form.alternativePhone.trim() || null,
         nationalId: form.nationalId.trim() || null,
         insuranceType: form.insuranceType,
         insuranceNumber: form.insuranceNumber.trim() || null,
@@ -143,6 +151,10 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
         subCounty: form.subCounty.trim() || null,
         ward: form.ward.trim() || null,
         line1: form.line1.trim() || null,
+        village: form.village.trim() || null,
+        landmark: form.landmark.trim() || null,
+        educationLevel: form.educationLevel || null,
+        occupation: form.occupation.trim() || null,
       });
       setDuplicates(res.duplicateCandidates ?? []);
       if (res.duplicateCandidates && res.duplicateCandidates.length > 0) {
@@ -238,6 +250,7 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="First name *"><input className="input" value={form.firstName} onChange={set('firstName')} /></Field>
+            <Field label="Middle name"><input className="input" value={form.middleName} onChange={set('middleName')} /></Field>
             <Field label="Last name *"><input className="input" value={form.lastName} onChange={set('lastName')} /></Field>
             <Field label="Date of birth *">
               <input type="date" className="input" value={form.dateOfBirth} onChange={set('dateOfBirth')} />
@@ -253,7 +266,20 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
                 {prechecking && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />}
               </div>
             </Field>
+            <Field label="Alternative phone"><input className="input" placeholder="+2547… (optional)" value={form.alternativePhone} onChange={set('alternativePhone')} /></Field>
             <Field label="National ID"><input className="input" value={form.nationalId} onChange={set('nationalId')} /></Field>
+            <Field label="Education level">
+              <select className="input" value={form.educationLevel} onChange={set('educationLevel')}>
+                <option value="">Not specified</option>
+                <option value="None">None</option>
+                <option value="Primary">Primary</option>
+                <option value="Secondary">Secondary</option>
+                <option value="Tertiary">Tertiary</option>
+                <option value="University">University</option>
+                <option value="Other">Other</option>
+              </select>
+            </Field>
+            <Field label="Occupation"><input className="input" value={form.occupation} onChange={set('occupation')} /></Field>
             <Field label="Clinic *">
               <select className="input" value={form.clinicType} onChange={set('clinicType')}>
                 {CLINIC_TYPES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -263,6 +289,8 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
             <Field label="Sub-county"><input className="input" value={form.subCounty} onChange={set('subCounty')} /></Field>
             <Field label="Ward / location"><input className="input" value={form.ward} onChange={set('ward')} /></Field>
             <Field label="Street / line 1"><input className="input" value={form.line1} onChange={set('line1')} /></Field>
+            <Field label="Village / estate"><input className="input" value={form.village} onChange={set('village')} /></Field>
+            <Field label="Landmark"><input className="input" placeholder="e.g. near the market" value={form.landmark} onChange={set('landmark')} /></Field>
           </div>
 
           <div className="pt-3 border-t border-slate-200">
