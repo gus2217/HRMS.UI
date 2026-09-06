@@ -75,7 +75,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const visible = NAV_ITEMS.filter((item) => itemVisible(item, permissions));
-  const badges = useWorkloadBadges(visible.map((item) => item.to));
+
+  // Clinicians (Doctor/Nurse) don't get a standalone Queue nav item — the queue
+  // lives inside the sections (Appointments → today's queue, Consultations →
+  // waiting queue). Reception still needs the Queue page to queue patients.
+  const isClinician = (user?.roles ?? []).some((r) => r === 'Doctor' || r === 'Nurse');
+  const navItems = isClinician ? visible.filter((item) => item.to !== '/queue') : visible;
+  const badges = useWorkloadBadges(navItems.map((item) => item.to));
 
   // Current section label for the top bar (longest matching nav route).
   const currentLabel = (() => {
@@ -110,7 +116,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {visible.map((item) => (
+        {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

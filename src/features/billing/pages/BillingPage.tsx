@@ -6,6 +6,7 @@ import { PatientService } from '@/features/patients/services/patientService';
 import type { InvoiceDetail, InvoiceListItem, PaymentReceiptDto } from '../types/billing';
 import type { PatientSummary } from '@/features/patients/types/patient';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { confirmDialog } from '@/lib/confirmDialog';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
@@ -397,7 +398,12 @@ function InvoiceDetailView({
   };
 
   const cancel = async () => {
-    if (!window.confirm('Cancel this invoice? This cannot be undone.')) return;
+    if (!(await confirmDialog({
+      title: 'Cancel invoice',
+      message: 'Cancel this invoice? This cannot be undone.',
+      confirmLabel: 'Cancel invoice',
+      danger: true,
+    }))) return;
     setCancelling(true);
     try {
       await BillingService.cancelInvoice(invoice.id);

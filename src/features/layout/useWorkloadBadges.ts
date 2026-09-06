@@ -43,8 +43,18 @@ const fetchCount = async (path: string, status: string): Promise<number | null> 
         return r.totalCount;
       }
       case '/consultations': {
+        // The consultations section now hosts the clinician queue too, so the
+        // badge reflects both: consultations awaiting a clinician + patients
+        // waiting in the reception queue (best-effort).
         const r = await ConsultationService.list(1, 1, status);
-        return r.totalCount;
+        let waiting = 0;
+        try {
+          const q = await QueueService.list(undefined, 'Waiting', 1, 1);
+          waiting = q.totalCount;
+        } catch {
+          // Queue endpoint not available to this user — ignore.
+        }
+        return r.totalCount + waiting;
       }
       case '/lab': {
         const r = await LaboratoryService.list(1, 1, status);

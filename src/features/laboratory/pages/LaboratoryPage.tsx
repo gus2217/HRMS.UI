@@ -7,6 +7,7 @@ import { PatientService } from '@/features/patients/services/patientService';
 import type { LabOrderDetail, LabOrderListItem } from '../types/laboratory';
 import type { PatientSummary } from '@/features/patients/types/patient';
 import { formatDateTime } from '@/lib/format';
+import { confirmDialog } from '@/lib/confirmDialog';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
@@ -163,7 +164,12 @@ export default function LaboratoryPage() {
 
   const cancelOrder = async () => {
     if (!active?.detail) return;
-    if (!window.confirm('Cancel this lab order? Results cannot be recorded afterwards.')) return;
+    if (!(await confirmDialog({
+      title: 'Cancel lab order',
+      message: 'Cancel this lab order? Results cannot be recorded afterwards.',
+      confirmLabel: 'Cancel order',
+      danger: true,
+    }))) return;
     try {
       const updated = await LaboratoryService.cancelOrder(active.detail.id, 'Cancelled by clinician');
       setActive((prev) => (prev ? { ...prev, detail: updated } : prev));

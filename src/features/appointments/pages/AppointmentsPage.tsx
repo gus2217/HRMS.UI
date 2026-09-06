@@ -20,6 +20,7 @@ import { AppointmentService } from '../services/appointmentService';
 import type { Appointment, AppointmentRequest } from '../types/appointment';
 import { clinicLabel } from '@/features/clinical/clinics';
 import { formatDate } from '@/lib/format';
+import { confirmDialog } from '@/lib/confirmDialog';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import AppointmentCalendar from '../components/AppointmentCalendar';
@@ -99,7 +100,12 @@ export default function AppointmentsPage() {
       await AppointmentService.start(a.id);
       toast.success(`Visit started for ${a.patientName}`);
       await load();
-      if (confirm('Visit started — open the consultation workspace to record the visit?')) {
+      if (await confirmDialog({
+        title: 'Visit started',
+        message: 'Open the consultation workspace to record the visit?',
+        confirmLabel: 'Open workspace',
+        cancelLabel: 'Stay here',
+      })) {
         navigate('/consultations');
       }
     } catch (err) {

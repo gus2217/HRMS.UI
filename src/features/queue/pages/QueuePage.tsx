@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import { QueueService } from '../services/queueService';
 import type { QueueEntry, QueuePriority } from '../types/queue';
 import { formatDateTime } from '@/lib/format';
+import { confirmDialog } from '@/lib/confirmDialog';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import QueuePatientModal from '../components/QueuePatientModal';
@@ -112,7 +113,12 @@ export default function QueuePage() {
       toast.success(`Consultation registered for ${entry.patientName}`);
       await load();
       // Offer the clinician a one-tap jump into the workspace.
-      if (confirm(`Consultation registered (${res.queueEntry.queueNumber}). Open it now?`)) {
+      if (await confirmDialog({
+        title: 'Consultation registered',
+        message: `${res.queueEntry.queueNumber} — open the consultation workspace now?`,
+        confirmLabel: 'Open workspace',
+        cancelLabel: 'Later',
+      })) {
         navigate('/consultations');
       }
     } catch (err) {
@@ -123,7 +129,12 @@ export default function QueuePage() {
   };
 
   const cancel = async (entry: QueueEntry) => {
-    if (!confirm(`Remove ${entry.patientName} (${entry.queueNumber}) from the queue?`)) return;
+    if (!(await confirmDialog({
+      title: 'Remove from queue',
+      message: `Remove ${entry.patientName} (${entry.queueNumber}) from the queue?`,
+      confirmLabel: 'Remove',
+      danger: true,
+    }))) return;
     setBusyId(entry.id);
     try {
       await QueueService.cancel(entry.id);

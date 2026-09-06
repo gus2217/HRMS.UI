@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Loader2, Plus, Stethoscope, Inbox, ArrowLeft, UserRound, Phone, CalendarDays,
+  Loader2, Plus, Stethoscope, Inbox, ArrowLeft, UserRound, Phone, CalendarDays, CheckCircle2, Clock,
 } from 'lucide-react';
 import { ConsultationService } from '../services/consultationService';
 import { PatientService } from '@/features/patients/services/patientService';
+import { QueueService } from '@/features/queue/services/queueService';
+import type { QueueEntry } from '@/features/queue/types/queue';
 import type { ConsultationDetail, ConsultationListItem } from '../types/consultation';
 import type { PatientSummary } from '@/features/patients/types/patient';
 import { formatDateTime, ageFromDateOfBirth } from '@/lib/format';
+import { clinicLabel } from '@/features/clinical/clinics';
 import { useAuth } from '@/features/auth/components/AuthContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import StartConsultationModal from '../components/StartConsultationModal';
@@ -50,6 +53,12 @@ export default function ConsultationsPage() {
   const [activeLoading, setActiveLoading] = useState(false);
 
   const canConsult = hasPermission(permissions, PERMISSIONS.CLINICAL_CONSULT);
+  const canAcceptQueue = hasPermission(permissions, PERMISSIONS.QUEUE_ACCEPT);
+
+  // Clinicians' waiting queue lives here (Queue nav is hidden from the clinician
+  // sidebar — each section hosts its own queue).
+  const [waiting, setWaiting] = useState<QueueEntry[]>([]);
+  const [waitingBusy, setWaitingBusy] = useState<string | null>(null);
 
   const load = async (pageNumber: number, statusFilter: string) => {
     setLoading(true);
@@ -78,6 +87,54 @@ export default function ConsultationsPage() {
     void loadLatestPatients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, status]);
+
+  const loadWaiting = async () => {
+    if (!canAcceptQueue) {
+      setWaiting([]);
+      return;
+    }
+    try {
+      const res = await QueueService.list(undefined, 'Waiting', 1, 100);
+      setWaiting(res.items);
+    } catch {
+      setWaiting([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadWaiting();
+    const timer = setInterval(() => void loadWaiting(), 30_000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAcceptQueue]);
+
+  const acceptWaiting = async (entry: QueueEntry) => {
+    if (!canAcceptQueue) return;
+    setWaitingBusy(entry.id);
+    try {
+      const res = await QueueService.accept(entry.id);
+      toast.success(`Consultation registered for ${entry.patientName}`);
+      await loadWaiting();
+      await load(page, status);
+      // Open the registered consultation straight in the workspace.
+      const detail = await ConsultationService.detail(res.consultationId);
+      await openConsultation({
+        id: detail.id,
+        patientId: detail.patientId,
+        patientNumber: entry.patientNumber,
+        patientName: entry.patientName,
+        clinicianUserId: detail.clinicianUserId,
+        status: detail.status,
+        startedAtUtc: detail.startedAtUtc,
+        completedAtUtc: detail.completedAtUtc,
+        detail,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Accept failed');
+    } finally {
+      setWaitingBusy(null);
+    }
+  };
 
   /** Opens the full-screen workspace for a consultation row. */
   const openConsultation = async (row: ConsultationRow) => {
@@ -216,6 +273,48 @@ export default function ConsultationsPage() {
           <FilterChip key={s} label={s} active={status === s} onClick={() => selectStatus(s)} />
         ))}
       </div>
+
+      {/* Clinician waiting queue — lives in the consultations section */}
+      {canAcceptQueue && waiting.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center gap-2">
+            <Clock size={15} className="text-amber-600" />
+            <h2 className="text-sm font-semibold text-slate-900">Queue — waiting patients</h2>
+            <span className="ml-auto text-xs text-slate-400">{waiting.length} waiting</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {waiting.map((e) => (
+              <div key={e.id} className="flex flex-wrap items-center gap-3 px-5 py-3 hover:bg-slate-50">
+                <span className="font-mono text-sm font-bold text-indigo-700 w-10 shrink-0">{e.queueNumber}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                  e.priority === 'Emergency' ? 'bg-red-100 text-red-700'
+                    : e.priority === 'Urgent' ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {e.priority}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-900 truncate">{e.patientName || '—'}</p>
+                  <p className="text-[11px] text-slate-400">
+                    <span className="font-mono text-indigo-600">{e.patientNumber}</span>
+                    {' · '}{clinicLabel(e.clinicType)}
+                    {' · queued '}{formatDateTime(e.requestedAtUtc)}
+                  </p>
+                  {e.notes && <p className="text-xs text-slate-500 mt-1 bg-slate-50 rounded px-2 py-1">{e.notes}</p>}
+                </div>
+                <button
+                  className="btn-primary text-xs py-1.5 shrink-0"
+                  disabled={waitingBusy === e.id}
+                  onClick={() => void acceptWaiting(e)}
+                >
+                  {waitingBusy === e.id ? <Loader2 size={13} className="animate-spin mr-1" /> : <CheckCircle2 size={13} className="mr-1" />}
+                  Accept & consult
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Working queue */}
