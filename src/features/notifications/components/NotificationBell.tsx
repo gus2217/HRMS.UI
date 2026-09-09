@@ -9,7 +9,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, CheckCheck, Loader2, Settings2, ArrowUpRight } from 'lucide-react';
+import { Bell, CheckCheck, Loader2, Settings2, ArrowUpRight, Volume2, VolumeX } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { NotificationService } from '../services/notificationService';
@@ -17,6 +17,11 @@ import { subscribeToNotifications } from '../services/notificationHub';
 import type { UserNotificationDto } from '../types/notifications';
 import { formatDateTime } from '@/lib/format';
 import NotificationPreferencesPanel from './NotificationPreferencesPanel';
+import {
+  isNotificationSoundEnabled,
+  playNotificationChime,
+  setNotificationSoundEnabled,
+} from '../lib/notificationSound';
 
 const CATEGORY_EMOJI: Record<string, string> = {
   ConsultationRequested: '🩺',
@@ -50,6 +55,7 @@ export default function NotificationBell() {
   const [items, setItems] = useState<UserNotificationDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [soundOn, setSoundOn] = useState(() => isNotificationSoundEnabled());
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -72,9 +78,10 @@ export default function NotificationBell() {
     return () => clearInterval(timer);
   }, [refresh]);
 
-  // Real-time: refresh the bell the moment a notification is pushed.
+  // Real-time: refresh the bell and chime the moment a notification is pushed.
   useEffect(() => {
     return subscribeToNotifications(() => {
+      playNotificationChime();
       void refresh();
     });
   }, [refresh]);
@@ -139,6 +146,14 @@ export default function NotificationBell() {
     }
   };
 
+  const toggleSound = () => {
+    setSoundOn((prev) => {
+      const next = !prev;
+      setNotificationSoundEnabled(next);
+      return next;
+    });
+  };
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -160,6 +175,18 @@ export default function NotificationBell() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
             <p className="text-sm font-semibold text-slate-900">Notifications</p>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSound}
+                className={`text-xs font-medium inline-flex items-center gap-1 transition-colors ${
+                  soundOn ? 'text-slate-400 hover:text-indigo-600' : 'text-slate-300 hover:text-slate-500'
+                }`}
+                aria-label={soundOn ? 'Mute notification sound' : 'Unmute notification sound'}
+                title={soundOn ? 'Sound on — click to mute' : 'Sound off — click to enable'}
+              >
+                {soundOn ? <Volume2 size={13} /> : <VolumeX size={13} />}
+                Sound
+              </button>
               <button
                 type="button"
                 onClick={() => setShowPrefs((p) => !p)}
