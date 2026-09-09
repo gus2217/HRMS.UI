@@ -20,6 +20,7 @@ export interface AppPages {
   InventoryPage: ComponentType;
   ReportsPage: ComponentType;
   AuditPage: ComponentType;
+  StaffPage: ComponentType;
 }
 
 /**
@@ -164,6 +165,16 @@ const AppRoutes = ({ pages }: { pages: AppPages }) => (
         <ProtectedRoute permission={PERMISSIONS.IDENTITY_USER_VIEW}>
           <AppLayout>
             <pages.AuditPage />
+          </AppLayout>
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/staff"
+      element={
+        <ProtectedRoute permission={PERMISSIONS.IDENTITY_USER_VIEW}>
+          <AppLayout>
+            <pages.StaffPage />
           </AppLayout>
         </ProtectedRoute>
       }

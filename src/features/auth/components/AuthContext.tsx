@@ -69,7 +69,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const permissions = useMemo(() => permissionsForRoles(user?.roles ?? []), [user]);
+  const permissions = useMemo(() => {
+    // Backend-issued effective permissions win (they include direct per-user
+    // grants the role mirror cannot know). Legacy stored sessions without a
+    // permissions array fall back to the role mirror.
+    if (user?.permissions && user.permissions.length > 0) {
+      return new Set<Permission>(user.permissions as Permission[]);
+    }
+    return permissionsForRoles(user?.roles ?? []);
+  }, [user]);
 
   const value = useMemo(
     () => ({

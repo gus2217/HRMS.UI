@@ -17,6 +17,7 @@ const WardsPage = lazy(() => import('./features/inpatient/pages/WardsPage'));
 const InventoryPage = lazy(() => import('./features/inventory/pages/InventoryPage'));
 const ReportsPage = lazy(() => import('./features/reports/pages/ReportsPage'));
 const AuditPage = lazy(() => import('./features/audit/pages/AuditPage'));
+const StaffPage = lazy(() => import('./features/staff/pages/StaffPage'));
 
 function PageFallback() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
             InventoryPage,
             ReportsPage,
             AuditPage,
+            StaffPage,
           }}
         />
       </Suspense>

@@ -10,7 +10,7 @@
 // ============================================================
 
 import { http, setTokens, clearTokens } from '@/lib/apiClient';
-import type { LoginRequest, LoginResponse, User } from '../types';
+import type { ChangePasswordRequest, LoginRequest, LoginResponse, User } from '../types';
 
 export class AuthError extends Error {
   constructor(message = 'Unauthorized') {
@@ -69,7 +69,33 @@ export const AuthService = {
 
   /** Build the session user from a login response. */
   toUser(res: LoginResponse): User {
-    return { id: res.userId, fullName: res.fullName, email: res.email, roles: res.roles };
+    return {
+      id: res.userId,
+      fullName: res.fullName,
+      email: res.email,
+      roles: res.roles,
+      permissions: res.permissions ?? undefined,
+      mustChangePassword: res.mustChangePassword ?? false,
+    };
+  },
+
+  /**
+   * Change the account password. Two flows share one endpoint:
+   *  - anonymous forced first-login (email + temporary password as current), or
+   *  - authenticated voluntary change (bearer session, email omitted).
+   * Returns a fresh token pair + effective permissions; tokens are stored when present.
+   */
+  async changePassword(request: ChangePasswordRequest): Promise<LoginResponse> {
+    try {
+      const res = await http.post<LoginResponse>('/auth/change-password', request);
+      if (res.accessToken && res.refreshToken) {
+        setTokens(res.accessToken, res.refreshToken);
+      }
+      return res;
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(0, extractErrorMessage(err));
+    }
   },
 
   logout(): void {
