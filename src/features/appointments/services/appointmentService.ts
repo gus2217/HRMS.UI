@@ -77,8 +77,8 @@ export const AppointmentService = {
     return http.post<AppointmentRequest>('/appointment-requests', input);
   },
 
-  listRequests(status?: string, clinicType?: string): Promise<PagedResult<AppointmentRequest>> {
-    const q = new URLSearchParams({ pageNumber: '1', pageSize: '100' });
+  listRequests(status?: string, clinicType?: string, pageSize = 100): Promise<PagedResult<AppointmentRequest>> {
+    const q = new URLSearchParams({ pageNumber: '1', pageSize: String(pageSize) });
     if (status) q.set('status', status);
     if (clinicType) q.set('clinicType', clinicType);
     return http.get<PagedResult<AppointmentRequest>>(`/appointment-requests?${q.toString()}`);
