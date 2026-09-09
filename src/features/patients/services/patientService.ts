@@ -9,6 +9,7 @@ import type {
   PatientSummary,
   RegisterPatientResponse,
   DuplicateCandidate,
+  RegistryLookupResult,
 } from '../types/patient';
 
 export interface RegisterPatientInput {
@@ -31,6 +32,8 @@ export interface RegisterPatientInput {
   landmark?: string | null;
   educationLevel?: string | null;
   occupation?: string | null;
+  /** NUPI client number when the record was pulled from the national registry. */
+  nationalRegistryNumber?: string | null;
 }
 
 export const PatientService = {
@@ -51,6 +54,11 @@ export const PatientService = {
     if (phone) q.set('phone', phone);
     if (nationalId) q.set('nationalId', nationalId);
     return http.get<DuplicateCandidate[]>(`/patients/check?${q.toString()}`);
+  },
+
+  /** Look a client up in the national client registry (NUPI) by National ID. */
+  registryLookup(nationalId: string): Promise<RegistryLookupResult> {
+    return http.post<RegistryLookupResult>('/patients/registry-lookup', { nationalId });
   },
 
   detail(id: string): Promise<PatientDetail> {

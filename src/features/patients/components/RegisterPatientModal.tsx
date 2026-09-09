@@ -13,9 +13,9 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
-import { Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Loader2, AlertTriangle, ExternalLink, ShieldCheck, Search } from 'lucide-react';
 import { PatientService } from '../services/patientService';
-import type { RegisterPatientResponse, DuplicateCandidate } from '../types/patient';
+import type { RegisterPatientResponse, DuplicateCandidate, RegistryClientDto } from '../types/patient';
 import { formatDate } from '@/lib/format';
 
 interface Props {
@@ -85,6 +85,9 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
   const [precheck, setPrecheck] = useState<DuplicateCandidate[]>([]);
   const [prechecking, setPrechecking] = useState(false);
   const [override, setOverride] = useState(false);
+  const [registryLooking, setRegistryLooking] = useState(false);
+  const [registryClient, setRegistryClient] = useState<RegistryClientDto | null>(null);
+  const [registryMessage, setRegistryMessage] = useState<string | null>(null);
   const precheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -115,6 +118,51 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
     } finally {
       setPrechecking(false);
     }
+  };
+
+  /** Look the National ID up in the national client registry (NUPI). */
+  const lookupRegistry = async () => {
+    const nationalId = form.nationalId.trim();
+    if (!/^\d{6,9}$/.test(nationalId)) {
+      toast.error('Enter a valid 6–9 digit National ID first.');
+      return;
+    }
+    setRegistryLooking(true);
+    setRegistryClient(null);
+    setRegistryMessage(null);
+    try {
+      const res = await PatientService.registryLookup(nationalId);
+      if (res.found && res.client) {
+        setRegistryClient(res.client);
+        const c = res.client;
+        setForm((f) => ({
+          ...f,
+          firstName: c.firstName ?? f.firstName,
+          middleName: c.middleName ?? f.middleName,
+          lastName: c.lastName ?? f.lastName,
+          gender: c.gender === 'Male' || c.gender === 'Female' ? c.gender : f.gender,
+          dateOfBirth: c.dateOfBirth ?? f.dateOfBirth,
+          phone: c.phone ?? f.phone,
+          county: c.county ?? f.county,
+          subCounty: c.subCounty ?? f.subCounty,
+          ward: c.ward ?? f.ward,
+          village: c.village ?? f.village,
+        }));
+        toast.success('Found on the national registry — details prefilled');
+      } else {
+        setRegistryMessage(res.message ?? 'Not found on the national registry — register as a new local record.');
+        toast(res.message ?? 'Not found on the national registry.', { icon: '🔍' });
+      }
+    } catch (err) {
+      setRegistryMessage(err instanceof Error ? err.message : 'Registry lookup failed — register locally.');
+    } finally {
+      setRegistryLooking(false);
+    }
+  };
+
+  const clearRegistry = () => {
+    setRegistryClient(null);
+    setRegistryMessage(null);
   };
 
   useEffect(() => {
@@ -155,6 +203,7 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
         landmark: form.landmark.trim() || null,
         educationLevel: form.educationLevel || null,
         occupation: form.occupation.trim() || null,
+        nationalRegistryNumber: registryClient?.clientNumber ?? null,
       });
       setDuplicates(res.duplicateCandidates ?? []);
       if (res.duplicateCandidates && res.duplicateCandidates.length > 0) {
@@ -206,6 +255,37 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
             <p className="text-[11px] text-amber-700 mt-1.5">
               Check the existing record first — registering a duplicate is blocked on submit unless you confirm override.
             </p>
+          </div>
+        )}
+
+        {/* National-registry lookup result */}
+        {registryClient && (
+          <div className="mx-5 mt-4 p-3.5 rounded-lg border border-emerald-200 bg-emerald-50">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-emerald-800 flex items-center gap-1.5 mb-1">
+                  <ShieldCheck size={13} /> Found on the national registry
+                </p>
+                <p className="text-xs text-slate-600">
+                  {[registryClient.firstName, registryClient.middleName, registryClient.lastName].filter(Boolean).join(' ')}
+                  {registryClient.dateOfBirth ? ` · ${formatDate(registryClient.dateOfBirth)}` : ''}
+                  {registryClient.gender ? ` · ${registryClient.gender}` : ''}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1 font-mono">NUPI: {registryClient.clientNumber}</p>
+              </div>
+              <button onClick={clearRegistry} className="text-[11px] text-slate-400 hover:text-slate-600 shrink-0">
+                Clear
+              </button>
+            </div>
+            <p className="text-[11px] text-emerald-700 mt-2">
+              Details were prefilled from the national registry. Review, complete the remaining fields, then register.
+            </p>
+          </div>
+        )}
+        {registryMessage && !registryClient && (
+          <div className="mx-5 mt-4 p-3.5 rounded-lg border border-sky-200 bg-sky-50">
+            <p className="text-xs text-sky-800">{registryMessage}</p>
+            <p className="text-[11px] text-sky-600 mt-1">You can still register the patient as a new local record.</p>
           </div>
         )}
 
@@ -267,7 +347,21 @@ export default function RegisterPatientModal({ onClose, onCreated }: Props) {
               </div>
             </Field>
             <Field label="Alternative phone"><input className="input" placeholder="+2547… (optional)" value={form.alternativePhone} onChange={set('alternativePhone')} /></Field>
-            <Field label="National ID"><input className="input" value={form.nationalId} onChange={set('nationalId')} /></Field>
+            <Field label="National ID">
+              <div className="relative">
+                <input className="input pr-20" value={form.nationalId} onChange={set('nationalId')} placeholder="6–9 digits" />
+                <button
+                  type="button"
+                  onClick={() => void lookupRegistry()}
+                  disabled={registryLooking || saving}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 transition-colors"
+                  title="Look up in the national registry"
+                >
+                  {registryLooking ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                  Look up
+                </button>
+              </div>
+            </Field>
             <Field label="Education level">
               <select className="input" value={form.educationLevel} onChange={set('educationLevel')}>
                 <option value="">Not specified</option>

@@ -99,3 +99,25 @@ export interface RegisterPatientResponse {
   patientNumber: string;
   duplicateCandidates: DuplicateCandidate[];
 }
+
+// ── National registry (NUPI) lookup ──────────────────────────────────────
+
+export interface RegistryClientDto {
+  clientNumber: string;
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
+  phone: string | null;
+  county: string | null;
+  subCounty: string | null;
+  ward: string | null;
+  village: string | null;
+}
+
+export interface RegistryLookupResult {
+  found: boolean;
+  client: RegistryClientDto | null;
+  message: string | null;
+}
